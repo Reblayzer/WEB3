@@ -11,7 +11,7 @@ import {
   createGameFromMemento as _createGameFromMemento,
   type Game,
   type GameMemento,
-} from '../../src/model/uno'
+} from '../../src/model/game'
 
 // Deck helpers
 export function createInitialDeck() { return createStandardDeck() }

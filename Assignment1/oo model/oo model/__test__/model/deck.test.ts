@@ -10,78 +10,78 @@ describe("Initial deck", () => {
   it("contains 19 numbered blue cards", () => {
     expect(
       initialDeck
-      .filter(is({type: 'NUMBERED', color: 'BLUE'}))
-      .size)
-    .toEqual(19)
+        .filter(is({ type: 'NUMBERED', color: 'BLUE' }))
+        .size)
+      .toEqual(19)
   })
   it("contains 19 numbered green cards", () => {
     expect(
       initialDeck
-      .filter(is({type: 'NUMBERED', color: 'GREEN'}))
-      .size)
-    .toEqual(19)
+        .filter(is({ type: 'NUMBERED', color: 'GREEN' }))
+        .size)
+      .toEqual(19)
   })
   it("contains 19 numbered red cards", () => {
     expect(
       initialDeck
-      .filter(is({type: 'NUMBERED', color: 'RED'}))
-      .size)
-    .toEqual(19)
+        .filter(is({ type: 'NUMBERED', color: 'RED' }))
+        .size)
+      .toEqual(19)
   })
   it("contains 19 numbered yellow cards", () => {
     expect(
       initialDeck
-      .filter(is({type: 'NUMBERED', color: 'YELLOW'}))
-      .size)
-    .toEqual(19)
+        .filter(is({ type: 'NUMBERED', color: 'YELLOW' }))
+        .size)
+      .toEqual(19)
   })
   it("only contains numbered card with numbers between 0 and 9", () => {
-    const numberedDeck = initialDeck.filter(is({type: 'NUMBERED'}))
-    while(numberedDeck.size > 0) {
-      const n = (numberedDeck.deal() as {number: number}).number
+    const numberedDeck = initialDeck.filter(is({ type: 'NUMBERED' }))
+    while (numberedDeck.size > 0) {
+      const n = (numberedDeck.deal() as { number: number }).number
       expect(n).toBeGreaterThanOrEqual(0)
       expect(n).toBeLessThan(10)
     }
   })
   it("contains numbered cards of every legal number and color", () => {
-    for(let color of deck.colors) {
-      expect(initialDeck.filter(is({number: 0, color})).size).toBe(1)
+    for (let color of deck.colors) {
+      expect(initialDeck.filter(is({ number: 0, color })).size).toBe(1)
     }
-  for(let number = 1; number < 10; number++) {
-      for(let color of deck.colors) {
-        expect(initialDeck.filter(is({number, color})).size).toBe(2)
+    for (let number = 1; number < 10; number++) {
+      for (let color of deck.colors) {
+        expect(initialDeck.filter(is({ number, color })).size).toBe(2)
       }
     }
   })
   it("contains 8 skip cards", () => {
-    expect(initialDeck.filter(is({type: 'SKIP'})).size).toEqual(8)
+    expect(initialDeck.filter(is({ type: 'SKIP' })).size).toEqual(8)
   })
   it("contains 2 skip cards of each color", () => {
-    for(let color of deck.colors) {
-      expect(initialDeck.filter(is({type: 'SKIP', color})).size).toBe(2)
+    for (let color of deck.colors) {
+      expect(initialDeck.filter(is({ type: 'SKIP', color })).size).toBe(2)
     }
   })
   it("contains 8 reverse cards", () => {
-    expect(initialDeck.filter(is({type: 'REVERSE'})).size).toEqual(8)
+    expect(initialDeck.filter(is({ type: 'REVERSE' })).size).toEqual(8)
   })
   it("contains 2 reverse cards of each color", () => {
-    for(let color of deck.colors) {
-      expect(initialDeck.filter(is({type: 'REVERSE', color})).size).toBe(2)
+    for (let color of deck.colors) {
+      expect(initialDeck.filter(is({ type: 'REVERSE', color })).size).toBe(2)
     }
   })
   it("contains 8 draw cards", () => {
-    expect(initialDeck.filter(is({type: 'DRAW'})).size).toEqual(8)
+    expect(initialDeck.filter(is({ type: 'DRAW' })).size).toEqual(8)
   })
   it("contains 2 draw cards of each color", () => {
-    for(let color of deck.colors) {
-      expect(initialDeck.filter(is({type:'DRAW',color})).size).toBe(2)
+    for (let color of deck.colors) {
+      expect(initialDeck.filter(is({ type: 'DRAW', color })).size).toBe(2)
     }
   })
   it("contains 4 wild cards", () => {
-    expect(initialDeck.filter(is({type:'WILD'})).size).toEqual(4)
+    expect(initialDeck.filter(is({ type: 'WILD' })).size).toEqual(4)
   })
   it("contains 4 wild draw cards", () => {
-    expect(initialDeck.filter(is({ type:'WILD DRAW' })).size).toEqual(4)
+    expect(initialDeck.filter(is({ type: 'WILD DRAW' })).size).toEqual(4)
   })
   // Blank cards skipped, since they have no gameplay
   it("contains 108 cards", () => {
@@ -114,13 +114,13 @@ describe("Deck methods", () => {
     })
     it("returns all cards in order", () => {
       const deckSize = deck.size
-      for(let i = 0; i < deckSize; i++) {
+      for (let i = 0; i < deckSize; i++) {
         expect(deck.deal()).toEqual(shuffledCards[i])
       }
     })
     it("returns undefined if the deck is empty", () => {
-      while(deck.size > 0) { 
-        deck.deal() 
+      while (deck.size > 0) {
+        deck.deal()
       }
       expect(deck.deal()).toBeUndefined()
     })
@@ -143,7 +143,7 @@ describe('fromMemento', () => {
       expect(card.type).toEqual('NUMBERED')
       expect(deck.hasColor(card, 'BLUE')).toBeTruthy()
       expect(deck.hasNumber(card, 7)).toBeTruthy()
-      
+
       card = created.deal()!
       expect(card.type).toEqual('SKIP')
       expect(deck.hasColor(card, 'RED')).toBeTruthy()
@@ -173,37 +173,37 @@ describe('fromMemento', () => {
 
   describe("from invalid Memento", () => {
     it("throws on invalid type", () => {
-      expect(() => createDeckFromMemento([{type: 'wut?'}])).toThrowError()
+      expect(() => createDeckFromMemento([{ type: 'wut?' }])).toThrowError()
     })
     it("throws on missing number on numbered type", () => {
-      expect(() => createDeckFromMemento([{type: 'NUMBERED', color: 'BLUE'}])).toThrowError()
+      expect(() => createDeckFromMemento([{ type: 'NUMBERED', color: 'BLUE' }])).toThrowError()
     })
     it("throws on missing color on numbered type", () => {
-      expect(() => createDeckFromMemento([{type: 'NUMBERED', number: 7}])).toThrowError()
+      expect(() => createDeckFromMemento([{ type: 'NUMBERED', number: 7 }])).toThrowError()
     })
     it("throws on missing color on skip type", () => {
-      expect(() => createDeckFromMemento([{type: 'SKIP'}])).toThrowError()
+      expect(() => createDeckFromMemento([{ type: 'SKIP' }])).toThrowError()
     })
     it("throws on missing color on reverse type", () => {
-      expect(() => createDeckFromMemento([{type: 'REVERSE'}])).toThrowError()
+      expect(() => createDeckFromMemento([{ type: 'REVERSE' }])).toThrowError()
     })
     it("throws on missing color on draw type", () => {
-      expect(() => createDeckFromMemento([{type: 'DRAW'}])).toThrowError()
+      expect(() => createDeckFromMemento([{ type: 'DRAW' }])).toThrowError()
     })
   })
 })
 
 describe("toMemento", () => {
   it("Returns the Memento used to create it", () => {
-      const cards: Record<string, string | number>[] = [
-        { type: 'NUMBERED', color: 'BLUE', number: 7 },
-        { type: 'SKIP', color: 'RED' },
-        { type: 'REVERSE', color: 'GREEN' },
-        { type: 'DRAW', color: 'YELLOW' },
-        { type: 'WILD' },
-        { type: 'WILD DRAW' }
-      ]
-      const created = createDeckFromMemento(cards)
-      expect(created.toMemento()).toEqual(cards)
+    const cards: Record<string, string | number>[] = [
+      { type: 'NUMBERED', color: 'BLUE', number: 7 },
+      { type: 'SKIP', color: 'RED' },
+      { type: 'REVERSE', color: 'GREEN' },
+      { type: 'DRAW', color: 'YELLOW' },
+      { type: 'WILD' },
+      { type: 'WILD DRAW' }
+    ]
+    const created = createDeckFromMemento(cards)
+    expect(created.toMemento()).toEqual(cards)
   })
 })

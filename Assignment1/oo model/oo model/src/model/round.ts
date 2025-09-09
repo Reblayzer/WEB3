@@ -1,36 +1,12 @@
-// src/model/round.ts
-import {
-  colors,
-  createStandardDeck,
-  deckFromMemento,
-  type Card,
-  type Color,
-  type Deck,
-  type Shuffler,
-} from './deck'
+// Round interface and implementation
 
-export type Direction = 'clockwise' | 'counterclockwise'
+import type { Card, Color, Shuffler } from './types/card-types'
+import type { Direction, RoundConfig, RoundMemento, EndListener } from './types/round-types'
+import { colors } from './types/card-types'
+import { createStandardDeck, deckFromMemento, type Deck } from './deck'
 
-export type RoundConfig = {
-  players: string[]
-  dealer: number
-  cardsPerPlayer?: number
-  shuffler?: Shuffler<Card>
-}
-
-export type RoundMemento = {
-  players: string[]
-  hands: Card[][]
-  drawPile: ReturnType<Deck['toMemento']>
-  discardPile: ReturnType<Deck['toMemento']>
-  currentColor: Color
-  currentDirection: Direction
-  dealer: number
-  playerInTurn: number | undefined
-}
-
-export type EndEvent = { winner: number }
-export type EndListener = (e: EndEvent) => void
+// Re-export for backwards compatibility
+export type { RoundMemento } from './types/round-types'
 
 export interface Round {
   readonly playerCount: number
@@ -117,8 +93,35 @@ class RoundImpl implements Round {
       this.players = m.players.slice()
       this.dealer = m.dealer
       this.hands = m.hands.map((h) => h.slice())
-      this.drawCards = m.drawPile.map((c) => c as Card)
-      this.discardCards = m.discardPile.map((c) => c as Card)
+
+      // Convert CardMemento arrays to Card arrays
+      this.drawCards = m.drawPile.map(cardMemento => {
+        if (cardMemento.type === 'WILD') return { type: 'WILD' }
+        if (cardMemento.type === 'WILD DRAW') return { type: 'WILD DRAW' }
+        if (cardMemento.type === 'NUMBERED') {
+          if (!cardMemento.color || cardMemento.number === undefined) throw new Error('Invalid NUMBERED memento')
+          return { type: 'NUMBERED', color: cardMemento.color, number: cardMemento.number }
+        }
+        if (cardMemento.type === 'SKIP' || cardMemento.type === 'REVERSE' || cardMemento.type === 'DRAW') {
+          if (!cardMemento.color) throw new Error('Missing color for action card')
+          return { type: cardMemento.type, color: cardMemento.color }
+        }
+        throw new Error('Unknown card type')
+      })
+
+      this.discardCards = m.discardPile.map(cardMemento => {
+        if (cardMemento.type === 'WILD') return { type: 'WILD' }
+        if (cardMemento.type === 'WILD DRAW') return { type: 'WILD DRAW' }
+        if (cardMemento.type === 'NUMBERED') {
+          if (!cardMemento.color || cardMemento.number === undefined) throw new Error('Invalid NUMBERED memento')
+          return { type: 'NUMBERED', color: cardMemento.color, number: cardMemento.number }
+        }
+        if (cardMemento.type === 'SKIP' || cardMemento.type === 'REVERSE' || cardMemento.type === 'DRAW') {
+          if (!cardMemento.color) throw new Error('Missing color for action card')
+          return { type: cardMemento.type, color: cardMemento.color }
+        }
+        throw new Error('Unknown card type')
+      })
       this.curColor = m.currentColor
       this.dir = m.currentDirection
       this.turn = m.playerInTurn
@@ -127,7 +130,7 @@ class RoundImpl implements Round {
       // Create deck instances that will maintain state
       this._drawPile = deckFromMemento(this.drawCards)
       this._discardPile = deckFromMemento(this.discardCards)
-      
+
       // Set ended state and winner if there's a winner
       if (hasWinner) {
         this.ended = true
@@ -209,7 +212,7 @@ class RoundImpl implements Round {
     if (i < 0 || i >= this.players.length) throw new Error('Player index out of bounds')
     return this.players[i]
   }
-  
+
   playerHand(i: number) {
     return this.hands[i]
   }

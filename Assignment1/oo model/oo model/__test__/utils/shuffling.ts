@@ -9,27 +9,27 @@ function constrainedShuffler(...constraints: [number, CardPredicate][]): Shuffle
     constraints.sort(([a, _], [b, __]) => a - b)
     standardShuffler(cards)
     let foundCards: Card[] = []
-    for(let i = 0; i < constraints.length; i++) {
+    for (let i = 0; i < constraints.length; i++) {
       let [_, predicate] = constraints[i]
       const foundIndex = cards.findIndex(predicate)
       if (foundIndex === -1) throw new Error('Unsatisfiable predicate')
-      foundCards.push(cards[foundIndex])    
+      foundCards.push(cards[foundIndex])
       cards.splice(foundIndex, 1)
-    }  
-    for(let i = 0; i < constraints.length; i++) {
+    }
+    for (let i = 0; i < constraints.length; i++) {
       let [index] = constraints[i]
       cards.splice(index, 0, foundCards[i])
-    }  
-  }  
+    }
+  }
 }
 
-export function memoizingShuffler(shuffler: Shuffler<Card>): {readonly shuffler: Shuffler<Card>, readonly memo: Readonly<Card[]>} {
+export function memoizingShuffler(shuffler: Shuffler<Card>): { readonly shuffler: Shuffler<Card>, readonly memo: Readonly<Card[]> } {
   let memo: Card[] = []
   function shuffle(cards: Card[]): void {
     shuffler(cards)
     memo = [...cards]
   }
-  return {shuffler: shuffle, get memo() {return memo}}
+  return { shuffler: shuffle, get memo() { return memo } }
 }
 
 export function successiveShufflers(...shufflers: Shuffler<Card>[]): Shuffler<Card> {
@@ -40,16 +40,17 @@ export function successiveShufflers(...shufflers: Shuffler<Card>[]): Shuffler<Ca
     shuffler(cards)
     if (index < shufflers.length - 1) index++
     shuffler = shufflers[index]
-  }  
+  }
 }
 
 export function createRoundWithShuffledCards(props: Partial<HandConfig>): [Round, Readonly<Card[]>] {
   const shuffler = props.shuffler ?? standardShuffler
   let memoShuffler = memoizingShuffler(shuffler)
   const hand = createRound({
-    players: props.players ?? ['a', 'b', 'c', 'd'], 
-    dealer: props.dealer ?? 1, 
-    shuffler: memoShuffler.shuffler})
+    players: props.players ?? ['a', 'b', 'c', 'd'],
+    dealer: props.dealer ?? 1,
+    shuffler: memoShuffler.shuffler
+  })
   return [hand, memoShuffler.memo]
 }
 
@@ -65,16 +66,16 @@ export type ShuffleBuilder = {
 }
 
 export function shuffleBuilder(
-    {players, cardsPerPlayer: cardsInHand}: {players: number; cardsPerPlayer: number} = {players: 4, cardsPerPlayer: 7}
-  ): ShuffleBuilder {
+  { players, cardsPerPlayer: cardsInHand }: { players: number; cardsPerPlayer: number } = { players: 4, cardsPerPlayer: 7 }
+): ShuffleBuilder {
   const constraints: Map<number, CardPredicate> = new Map()
   const topOfDiscardPile = players * cardsInHand
   let currentIndex = 0
   let repetition = 1
 
   function constrain(preds: CardPredicate[]): ShuffleBuilder {
-    for(let i = 0; i < repetition; i++) {
-      for(let pred of preds) {
+    for (let i = 0; i < repetition; i++) {
+      for (let pred of preds) {
         constraints.set(currentIndex++, pred)
       }
     }
@@ -104,8 +105,8 @@ export function shuffleBuilder(
       return builder
     },
     repeat(n: number) {
-        repetition = n
-        return builder
+      repetition = n
+      return builder
     },
     is(...specs: CardSpec[]) {
       return constrain(specs.map(is))

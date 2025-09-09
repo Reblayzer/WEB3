@@ -1,19 +1,12 @@
-export type Color = 'BLUE' | 'GREEN' | 'RED' | 'YELLOW'
-export const colors: Readonly<Color[]> = ['BLUE', 'GREEN', 'RED', 'YELLOW'] as const
+// Deck interface and implementation
 
-export type Numbered = 0|1|2|3|4|5|6|7|8|9
-export type CardType = 'NUMBERED' | 'SKIP' | 'REVERSE' | 'DRAW' | 'WILD' | 'WILD DRAW'
+import type { Card, CardMemento, Color, Numbered, Shuffler } from './types/card-types'
+import { colors } from './types/card-types'
 
-export type NumberedCard = { type: 'NUMBERED', color: Color, number: Numbered }
-export type ActionCard = { type: 'SKIP'|'REVERSE'|'DRAW', color: Color }
-export type WildCard = { type: 'WILD' }
-export type WildDraw4Card = { type: 'WILD DRAW' }
-export type Card = NumberedCard | ActionCard | WildCard | WildDraw4Card
-
-export type CardMemento = { type: CardType, color?: Color, number?: Numbered }
-
-// Tests will pass a shuffler that mutates the given array in-place
-export type Shuffler<T> = (xs: T[]) => void
+// Re-export commonly used types and constants for backwards compatibility
+export { colors } from './types/card-types'
+export type { Card } from './types/card-types'
+export { hasColor, hasNumber } from './card'
 
 export interface Deck {
   readonly size: number
@@ -34,15 +27,12 @@ class ArrayDeck implements Deck {
   shuffle(s: Shuffler<Card>) { s(this.cards) }
   deal() { return this.cards.shift() }
   peek() { return this.cards[0] }
-  top() { return this.cards[0] }
+  top() { return this.peek() }
   filter(pred: (c: Card) => boolean): Deck {
     return new ArrayDeck(this.cards.filter(pred))
   }
-  toMemento(): CardMemento[] { return this.cards.map(c => ({...c})) }
+  toMemento(): CardMemento[] { return this.cards.map(c => ({ ...c })) }
 }
-
-export const hasColor = (c: Card, color: Color) => 'color' in c && c.color === color
-export const hasNumber = (c: Card, n: Numbered) => c.type === 'NUMBERED' && c.number === n
 
 const makeStandardCards = (): Card[] => {
   const cards: Card[] = []
@@ -55,9 +45,9 @@ const makeStandardCards = (): Card[] => {
       cards.push({ type: 'NUMBERED', color, number: n })
     }
     // two of each action card
-    cards.push({ type: 'SKIP', color });    cards.push({ type: 'SKIP', color })
+    cards.push({ type: 'SKIP', color }); cards.push({ type: 'SKIP', color })
     cards.push({ type: 'REVERSE', color }); cards.push({ type: 'REVERSE', color })
-    cards.push({ type: 'DRAW', color });    cards.push({ type: 'DRAW', color })
+    cards.push({ type: 'DRAW', color }); cards.push({ type: 'DRAW', color })
   }
   // 4 wild + 4 wild draw
   for (let i = 0; i < 4; i++) cards.push({ type: 'WILD' })

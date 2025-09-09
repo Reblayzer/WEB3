@@ -1,13 +1,10 @@
-import type { Card } from './deck'
-import { createRound, createRoundFromMemento, type Round, type RoundMemento } from './round'
+// Game interface and implementation
 
-export type GameMemento = {
-  players: string[]
-  targetScore: number
-  scores: number[]
-  currentRound?: RoundMemento
-  cardsPerPlayer?: number
-}
+import type { GameConfig, GameMemento } from './types/game-types'
+import { createRound, createRoundFromMemento, type Round } from './round'
+
+// Re-export for backwards compatibility
+export type { GameMemento } from './types/game-types'
 
 export interface Game {
   readonly playerCount: number
@@ -17,13 +14,6 @@ export interface Game {
   winner(): number | undefined
   currentRound(): Round | undefined
   toMemento(): GameMemento
-}
-
-export type GameConfig = {
-  players?: string[]
-  targetScore?: number
-  randomizer?: (bound: number) => number
-  cardsPerPlayer?: number
 }
 
 class GameImpl implements Game {
