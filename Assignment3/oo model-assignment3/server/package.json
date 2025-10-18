@@ -1,0 +1,25 @@
+{
+  "name": "uno-graphql-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "GraphQL server for multiplayer UNO game",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.12.2",
+    "@graphql-tools/schema": "^10.0.25",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "graphql": "^16.8.1",
+    "graphql-subscriptions": "^2.0.0",
+    "graphql-ws": "^5.14.2",
+    "uuid": "^9.0.1",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0"
+  }
+}
