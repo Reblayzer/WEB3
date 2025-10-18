@@ -21,6 +21,9 @@ export interface Round {
   play(i: number, chosenColor?: Color): Card
   draw(): void
   sayUno(player: number): void
+  hasCalledUno(player: number): boolean
+  isUnoWindowOpen(): boolean
+  getUnoTarget(): number | undefined
   catchUnoFailure(args: { accuser: number; accused: number }): boolean
   hasEnded(): boolean
   winner(): number | undefined
@@ -461,6 +464,24 @@ class RoundImpl implements Round {
       return
     }
     // Otherwise ignore silently (tests don't require a throw in this case)
+  }
+
+  hasCalledUno(player: number): boolean {
+    // boundaries
+    if (player < 0 || player >= this.playerCount) throw new Error('Invalid player')
+
+    // Return true if:
+    // 1. Player has pre-announced UNO (before playing to 1 card), OR
+    // 2. Player is the UNO target (has 1 card) and said UNO (unoSaid = true)
+    return this.preUno[player] || (this.unoTarget === player && this.unoSaid)
+  }
+
+  isUnoWindowOpen(): boolean {
+    return this.unoOpen
+  }
+
+  getUnoTarget(): number | undefined {
+    return this.unoTarget
   }
 
   catchUnoFailure({ accuser, accused }: { accuser: number; accused: number }): boolean {

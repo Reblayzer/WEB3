@@ -3,7 +3,10 @@
     <div class="lobby-header">
       <h1>UNO Lobby</h1>
       <div class="player-info">
-        <span>Welcome, <strong>{{ playerStore.playerName }}</strong>!</span>
+        <span
+          >Welcome, <strong>{{ playerStore.playerName }}</strong
+          >!</span
+        >
         <button @click="handleLogout" class="logout-button">Logout</button>
       </div>
     </div>
@@ -21,8 +24,12 @@
               <option :value="4">4 Players</option>
             </select>
           </label>
-          <button @click="handleCreateGame" class="create-button" :disabled="creating">
-            {{ creating ? 'Creating...' : 'Create Game' }}
+          <button
+            @click="handleCreateGame"
+            class="create-button"
+            :disabled="creating"
+          >
+            {{ creating ? "Creating..." : "Create Game" }}
           </button>
         </div>
       </div>
@@ -57,91 +64,97 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { usePlayerStore } from '../stores/player'
+import { ref, onMounted, onUnmounted } from "vue";
+import { useRouter } from "vue-router";
+import { usePlayerStore } from "../stores/player";
 import {
   getAvailableGames,
   createGame,
   joinGame,
   subscribeToGamesListUpdates,
-} from '../api/graphql'
+} from "../api/graphql";
 
-const router = useRouter()
-const playerStore = usePlayerStore()
+const router = useRouter();
+const playerStore = usePlayerStore();
 
-const maxPlayers = ref(4)
-const availableGames = ref([])
-const loading = ref(true)
-const creating = ref(false)
-let gamesSubscription = null
+const maxPlayers = ref(4);
+const availableGames = ref([]);
+const loading = ref(true);
+const creating = ref(false);
+let gamesSubscription = null;
 
 onMounted(async () => {
   // Check if player is logged in
   if (!playerStore.playerName) {
-    router.push('/')
-    return
+    router.push("/");
+    return;
   }
 
   // Load available games
   try {
-    availableGames.value = await getAvailableGames()
+    availableGames.value = await getAvailableGames();
   } catch (error) {
-    console.error('Error loading games:', error)
+    console.error("Error loading games:", error);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 
   // Subscribe to games list updates
   gamesSubscription = subscribeToGamesListUpdates((games) => {
-    availableGames.value = games
-  })
-})
+    availableGames.value = games;
+  });
+});
 
 onUnmounted(() => {
   if (gamesSubscription) {
-    gamesSubscription.unsubscribe()
+    gamesSubscription.unsubscribe();
   }
-})
+});
 
 async function handleCreateGame() {
-  creating.value = true
+  creating.value = true;
   try {
-    const game = await createGame(playerStore.playerName, maxPlayers.value)
+    const game = await createGame(playerStore.playerName, maxPlayers.value);
     // Find and store the player ID (creator is first player)
-    const player = game.players.find(p => p.name === playerStore.playerName)
+    const player = game.players.find((p) => p.name === playerStore.playerName);
     if (player) {
-      playerStore.setPlayerId(player.id)
+      playerStore.setPlayerId(player.id);
     }
-    // Navigate to the game
-    router.push(`/game/${game.id}`)
+    // Navigate to the game after a short delay to ensure state is updated
+    setTimeout(() => {
+      router.push(`/game/${game.id}`);
+    }, 100);
   } catch (error) {
-    console.error('Error creating game:', error)
-    alert('Failed to create game. Please try again.')
+    console.error("Error creating game:", error);
+    alert(error.message || "Failed to create game. Please try again.");
   } finally {
-    creating.value = false
+    creating.value = false;
   }
 }
 
 async function handleJoinGame(gameId) {
   try {
-    const game = await joinGame(gameId, playerStore.playerName)
+    const game = await joinGame(gameId, playerStore.playerName);
     // Find and store the player ID
-    const player = game.players.find(p => p.name === playerStore.playerName)
+    const player = game.players.find((p) => p.name === playerStore.playerName);
     if (player) {
-      playerStore.setPlayerId(player.id)
+      playerStore.setPlayerId(player.id);
     }
-    // Navigate to the game
-    router.push(`/game/${game.id}`)
+    // Navigate to the game after a short delay to ensure state is updated
+    setTimeout(() => {
+      router.push(`/game/${game.id}`);
+    }, 100);
   } catch (error) {
-    console.error('Error joining game:', error)
-    alert('Failed to join game. It may be full or already started.')
+    console.error("Error joining game:", error);
+    alert(
+      error.message || "Failed to join game. It may be full or already started."
+    );
   }
 }
 
 function handleLogout() {
-  playerStore.clearPlayer()
-  router.push('/')
+  playerStore.clearPlayer();
+  router.push("/");
 }
 </script>
 
