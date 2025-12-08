@@ -69,7 +69,7 @@ class GameImpl implements Game {
       if (cfg.targetScore !== undefined && cfg.targetScore <= 0) throw new Error('Target score must be positive')
 
       this.players = cfg.players ?? ['A', 'B']
-      this.target = cfg.targetScore ?? 10
+      this.target = cfg.targetScore ?? 500
       this.scores = new Array(this.players.length).fill(0)
       this.cardsPerPlayer = cfg.cardsPerPlayer
       this.randomizer = cfg.randomizer

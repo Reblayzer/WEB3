@@ -7,7 +7,7 @@
         <label for="playerName">Your Name:</label>
         <input 
           id="playerName"
-          v-model="playerName" 
+          v-model="playerNameModel" 
           type="text" 
           placeholder="Enter your name"
           @keyup.enter="startGame"
@@ -21,8 +21,8 @@
           <button 
             v-for="num in [1, 2, 3]" 
             :key="num"
-            @click="numBots = num"
-            :class="['bot-btn', { active: numBots === num }]"
+            @click="botCountModel = num"
+            :class="['bot-btn', { active: botCountModel === num }]"
           >
             {{ num }} Bot{{ num > 1 ? 's' : '' }}
           </button>
@@ -43,7 +43,7 @@
       <button 
         @click="startGame" 
         class="btn btn-primary btn-large"
-        :disabled="!playerName.trim()"
+        :disabled="!canStart"
       >
         Start Game
       </button>
@@ -52,7 +52,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlayerStore } from '../stores/player'
 import { useGameStore } from '../stores/game'
@@ -61,14 +61,29 @@ const router = useRouter()
 const playerStore = usePlayerStore()
 const gameStore = useGameStore()
 
-const playerName = ref(playerStore.playerName || '')
-const numBots = ref(2)
+const formState = reactive({
+  playerName: playerStore.playerName || '',
+  numBots: 2,
+})
+
+// Two-way computed binding to demonstrate MVVM-style v-model with a computed setter
+const playerNameModel = computed({
+  get: () => formState.playerName,
+  set: (value) => { formState.playerName = value.trimStart() }
+})
+
+const botCountModel = computed({
+  get: () => formState.numBots,
+  set: (value) => { formState.numBots = Number(value) || 1 }
+})
+
+const canStart = computed(() => formState.playerName.trim().length > 0)
 
 async function startGame() {
-  if (!playerName.value.trim()) return
+  if (!formState.playerName.trim()) return
   
-  playerStore.setPlayerName(playerName.value)
-  gameStore.setupGame(numBots.value)
+  playerStore.setPlayerName(formState.playerName)
+  gameStore.setupGame(botCountModel.value)
   
   // Wait for Vue to process reactive updates before navigating
   await new Promise(resolve => setTimeout(resolve, 100))
