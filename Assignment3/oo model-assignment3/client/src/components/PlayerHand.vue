@@ -1,14 +1,21 @@
 <template>
   <div class="player-hand">
     <div class="cards-container">
-      <UnoCard
-        v-for="(cardData, index) in playableCards"
-        :key="index"
-        :card="cardData"
-        :playable="cardData.playable"
-        @click="handleCardClick(index)"
-        :style="{ transform: `translateX(${index * 20}px)` }"
-      />
+      <template v-for="(cardData, index) in playableCards" :key="index">
+        <slot
+          name="card"
+          :card="cardData"
+          :index="index"
+          :playable="cardData.playable"
+        >
+          <UnoCard
+            :card="cardData"
+            :playable="cardData.playable"
+            @click="handleCardClick(index)"
+            :style="{ transform: `translateX(${index * 20}px)` }"
+          />
+        </slot>
+      </template>
     </div>
   </div>
 </template>

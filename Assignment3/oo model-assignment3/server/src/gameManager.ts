@@ -37,7 +37,7 @@ export class GameManager {
       }],
       currentPlayerIndex: 0,
       status: 'WAITING',
-      targetScore: 100,
+      targetScore: 500,
       createdBy,
       maxPlayers,
       winner: null,

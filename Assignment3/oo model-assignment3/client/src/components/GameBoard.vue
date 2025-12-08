@@ -5,8 +5,8 @@
       <div class="pile discard-pile">
         <h4>Top Card</h4>
         <UnoCard v-if="topCard" :card="topCard" :playable="false" />
-        <div v-if="currentColor" class="current-color">
-          Current Color: <span :class="`color-indicator ${currentColor.toLowerCase()}`">{{ currentColor }}</span>
+        <div v-if="displayColor" class="current-color">
+          Current Color: <span :class="`color-indicator ${displayColor.toLowerCase()}`">{{ displayColor }}</span>
         </div>
       </div>
 
@@ -25,9 +25,10 @@
 </template>
 
 <script setup>
+import { computed, inject } from 'vue'
 import UnoCard from './UnoCard.vue'
 
-defineProps({
+const props = defineProps({
   topCard: {
     type: Object,
     default: null
@@ -39,6 +40,14 @@ defineProps({
 })
 
 defineEmits(['draw-card'])
+
+const injectedColor = inject('currentColor', null)
+const displayColor = computed(() => {
+  const provided = injectedColor && typeof injectedColor === 'object' && 'value' in injectedColor
+    ? (injectedColor as any).value
+    : injectedColor
+  return provided ?? props.currentColor
+})
 </script>
 
 <style scoped>

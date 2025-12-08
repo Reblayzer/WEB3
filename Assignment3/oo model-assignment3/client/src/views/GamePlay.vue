@@ -15,7 +15,7 @@
           </span>
         </div>
         <div class="direction">
-          Direction: {{ gameStore.direction === 1 ? '→' : '←' }}
+          Direction: {{ directionLabel }}
         </div>
         <div class="cards-left">
           Draw Pile: {{ gameStore.drawPile.length }} cards
@@ -120,7 +120,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import GameBoard from '../components/GameBoard.vue'
@@ -132,6 +132,10 @@ const gameStore = useGameStore()
 const showColorChooser = ref(false)
 const pendingWildCard = ref(null)
 const unoCaught = ref(false) // Track if UNO was just caught
+const directionLabel = computed(() => gameStore.direction === 1 ? 'clockwise' : 'counterclockwise')
+
+// Provide reactive state to descendants (avoids prop drilling and showcases provide/inject)
+provide('currentColor', computed(() => gameStore.currentColor))
 
 // Reset unoCaught when turn changes
 watch(() => gameStore.currentPlayerIndex, () => {
@@ -289,11 +293,6 @@ const handleCatchUnoFailure = () => {
 // Reset unoCaught flag when turn changes
 watch(() => gameStore.currentPlayerIndex, () => {
   unoCaught.value = false
-})
-
-// Cleanup on unmount
-onUnmounted(() => {
-  // Any cleanup needed
 })
 </script>
 

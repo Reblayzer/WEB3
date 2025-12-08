@@ -22,9 +22,9 @@ describe("Game set up", () => {
   it("has the target score set in the properties", () => {
     expect(game.targetScore).toBe(500)
   })
-  it("has 10 as the default target score", () => {
+  it("has 500 as the default target score", () => {
     const game: Game = createGame({ players: ['a', 'b', 'c', 'd'] })
-    expect(game.targetScore).toBe(10)
+    expect(game.targetScore).toBe(500)
   })
   it("starts with all players at 0 score", () => {
     expect(game.score(0)).toBe(0)

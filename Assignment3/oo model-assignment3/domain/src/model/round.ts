@@ -4,6 +4,7 @@ import type { Card, Color, Shuffler } from './types/card-types.js'
 import type { Direction, RoundConfig, RoundMemento, EndListener } from './types/round-types.js'
 import { colors } from './types/card-types.js'
 import { createStandardDeck, deckFromMemento, type Deck } from './deck.js'
+import { isActionCard, isNumberedCard, isWildCard } from './card.js'
 
 // Re-export for backwards compatibility
 export type { RoundMemento } from './types/round-types'
@@ -33,8 +34,17 @@ export interface Round {
 }
 
 const mod = (a: number, n: number) => ((a % n) + n) % n
-const pointsFor = (c: Card): number =>
-  c.type === 'NUMBERED' ? c.number : c.type === 'WILD' || c.type === 'WILD DRAW' ? 50 : 20
+const pointsFor = (c: Card): number => {
+  switch (c.type) {
+    case 'NUMBERED': return c.number
+    case 'SKIP':
+    case 'REVERSE':
+    case 'DRAW': return 20
+    case 'WILD':
+    case 'WILD DRAW': return 50
+    default: return 0
+  }
+}
 
 class RoundImpl implements Round {
   players: string[]
@@ -424,9 +434,8 @@ class RoundImpl implements Round {
       return
     }
 
-    // Remove all cards except the top one
-    const top = this.discardCards[0]
-    const cardsToShuffle = this.discardCards.slice(1)
+    // Remove all cards except the top one using array destructuring
+    const [top, ...cardsToShuffle] = this.discardCards
 
     // Clear discard pile except for top card
     this.discardCards = [top]
