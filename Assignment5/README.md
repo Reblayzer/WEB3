@@ -1,5 +1,4 @@
 # Assignment 5 (React + Redux + RxJS Uno)
-
 ## Structure
 - `domain/` – functional Uno model (pure logic from Assignment 4).
 - `server/` – Node WebSocket server using the domain model for state.

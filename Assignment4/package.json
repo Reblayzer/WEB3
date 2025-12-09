@@ -1,0 +1,8 @@
+{
+  "name": "assignment4",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "yahtzee-functional"
+  ]
+}

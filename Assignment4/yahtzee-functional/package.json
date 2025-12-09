@@ -1,16 +1,11 @@
 {
-  "name": "uno",
-  "version": "0.0.1",
-  "description": "Uno",
-  "main": "index.js",
+  "name": "yahtzee-functional",
+  "version": "1.0.0",
+  "description": "Functional Yahtzee model and tests",
+  "main": "src/model/yahtzee.ts",
   "scripts": {
-    "test": "jest"
+    "test": "jest --runInBand"
   },
-  "keywords": [
-    "uno",
-    "oo",
-    "functional"
-  ],
   "author": "Ole Ildsgaard Hougaard",
   "license": "ISC",
   "dependencies": {
