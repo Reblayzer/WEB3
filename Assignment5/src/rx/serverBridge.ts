@@ -1,18 +1,22 @@
 import { webSocket, WebSocketSubject } from 'rxjs/webSocket'
 import type { AppDispatch } from '../store'
-import { setGame, setPlayerIndex } from '../features/uno/unoSlice'
+import { setGame, setPlayerIndex, setRoomId, setRooms, setConnected } from '../features/uno/unoSlice'
 import type { Color } from '../model/deck'
 
 export type OutgoingMessage =
+  | { type: 'set-name'; name: string }
+  | { type: 'create-room'; bots?: number }
+  | { type: 'join-room'; roomId: string }
   | { type: 'play'; index: number; color?: Color }
   | { type: 'draw' }
   | { type: 'say-uno' }
   | { type: 'catch-uno'; accused: number }
-  | { type: 'reset'; players?: string[] }
+  | { type: 'reset' }
 
 type IncomingMessage =
-  | { type: 'welcome'; playerIndex: number; game: any }
-  | { type: 'state'; game: any }
+  | { type: 'welcome'; clientId: string }
+  | { type: 'room-list'; rooms: { id: string; players: string[]; awaiting: number }[] }
+  | { type: 'state'; roomId: string; game: any; playerIndex: number }
   | { type: 'error'; message: string }
 
 export type Connection = {
@@ -28,10 +32,14 @@ export function connectServerStream(dispatch: AppDispatch, url = 'ws://localhost
       if (!msg || typeof msg !== 'object' || !('type' in msg)) return
       switch (msg.type) {
         case 'welcome':
-          dispatch(setPlayerIndex(msg.playerIndex))
-          dispatch(setGame(msg.game))
+          dispatch(setConnected(true))
+          break
+        case 'room-list':
+          dispatch(setRooms(msg.rooms))
           break
         case 'state':
+          dispatch(setRoomId(msg.roomId))
+          dispatch(setPlayerIndex(msg.playerIndex))
           dispatch(setGame(msg.game))
           break
         case 'error':
@@ -43,7 +51,9 @@ export function connectServerStream(dispatch: AppDispatch, url = 'ws://localhost
     },
     error: err => {
       console.error('WebSocket error', err)
+      dispatch(setConnected(false))
     },
+    complete: () => dispatch(setConnected(false))
   })
 
   return {
