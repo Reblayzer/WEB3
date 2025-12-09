@@ -1,0 +1,8 @@
+# Node artifacts
+node_modules/
+dist/
+
+# Logs and OS cruft
+*.log
+.DS_Store
+Thumbs.db
