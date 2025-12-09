@@ -11,9 +11,7 @@
       <RouterView />
     </main>
     
-    <footer class="app-footer">
-      <p>Assignment 2 - Browser-only UNO with Bot Players</p>
-    </footer>
+    <footer class="app-footer"></footer>
   </div>
 </template>
 

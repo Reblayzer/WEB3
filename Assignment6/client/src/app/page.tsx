@@ -1,27 +1,35 @@
+'use client'
+
 import { useEffect, useMemo, useState } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
-import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom'
+import { Provider, useDispatch, useSelector } from 'react-redux'
 import type { Color, Card } from 'domain/src/model/deck'
-import type { RootState, AppDispatch } from './store'
-import { connectServerStream, type OutgoingMessage } from './rx/serverBridge'
 import * as Round from 'domain/src/model/round'
-import { setDisconnected, setRooms, setPlayerName } from './features/uno/unoSlice'
-import UnoCard from './components/UnoCard'
-import ColorChooser from './components/ColorChooser'
+import { connectServerStream, type OutgoingMessage } from '../rx/serverBridge'
+import { setDisconnected, setRooms, setPlayerName } from '../features/uno/unoSlice'
+import UnoCard from '../components/UnoCard'
+import ColorChooser from '../components/ColorChooser'
+import { store, type RootState, type AppDispatch } from '../lib/store'
 
 type ConnectionHandle = { send: (msg: OutgoingMessage) => void; disconnect: () => void }
 
-export default function App() {
+export default function Page() {
+  return (
+    <Provider store={store}>
+      <ClientPage />
+    </Provider>
+  )
+}
+
+function ClientPage() {
   const dispatch = useDispatch<AppDispatch>()
   const { game, playerIndex, connected, rooms, roomId, playerName } = useSelector((state: RootState) => state.uno)
   const round = game.currentRound
   const [conn, setConn] = useState<ConnectionHandle | null>(null)
-  const [name, setName] = useState<string>(playerName ?? '')
+  const [inputName, setInputName] = useState<string>(playerName ?? '')
+  const [loggedIn, setLoggedIn] = useState<boolean>(Boolean(playerName))
   const [pendingWildIndex, setPendingWildIndex] = useState<number | null>(null)
   const [showColorChooser, setShowColorChooser] = useState(false)
   const [maxPlayers, setMaxPlayers] = useState<number>(4)
-  const navigate = useNavigate()
-  const location = useLocation()
 
   useEffect(() => {
     const connection = connectServerStream(dispatch)
@@ -33,18 +41,12 @@ export default function App() {
   }, [dispatch])
 
   useEffect(() => {
-    if (conn && name.trim()) {
-      const trimmed = name.trim()
+    if (conn && loggedIn && inputName.trim()) {
+      const trimmed = inputName.trim()
       conn.send({ type: 'set-name', name: trimmed })
       dispatch(setPlayerName(trimmed))
     }
-  }, [conn, name, dispatch])
-
-  useEffect(() => {
-    if (roomId && location.pathname !== '/play') {
-      navigate('/play')
-    }
-  }, [roomId, location.pathname, navigate])
+  }, [conn, inputName, loggedIn, dispatch])
 
   // Auto-reconnect if the server goes down and comes back
   useEffect(() => {
@@ -59,7 +61,7 @@ export default function App() {
   }, [connected, dispatch])
 
   const currentPlayer = round?.playerInTurn ?? -1
-  const canAct = connected && roomId && playerIndex !== undefined && playerIndex === currentPlayer
+  const canAct = Boolean(connected && roomId && playerIndex !== undefined && playerIndex === currentPlayer)
 
   const myName = useMemo(() => {
     if (playerIndex === undefined || !round) return ''
@@ -83,40 +85,40 @@ export default function App() {
     setShowColorChooser(false)
   }
 
+  const handleLogin = () => {
+    const trimmed = inputName.trim()
+    if (!trimmed) return
+    setInputName(trimmed)
+    setLoggedIn(true)
+  }
+
   const leaveRoom = () => {
     conn?.disconnect()
     dispatch(setDisconnected())
     dispatch(setRooms([]))
     const c = connectServerStream(dispatch)
     setConn(c)
-    navigate('/lobby')
-  }
-
-  const handleLogin = () => {
-    if (!name.trim()) return
-    conn?.send({ type: 'set-name', name: name.trim() })
-    dispatch(setPlayerName(name.trim()))
-    navigate('/lobby')
   }
 
   const handleCreateRoom = () => {
-    if (!name.trim()) return
+    const n = (playerName || inputName).trim()
+    if (!n) return
     conn?.send({ type: 'create-room', bots: 0, maxPlayers })
-    navigate('/play')
   }
 
   const handleJoinRoom = (room: string) => {
     conn?.send({ type: 'join-room', roomId: room })
-    navigate('/play')
   }
 
   const directionLabel =
     round?.currentDirection === 'clockwise' ? 'Clockwise' : round?.currentDirection === 'counterclockwise' ? 'Counter-clockwise' : 'Unknown'
 
+  const view = !loggedIn ? 'login' : roomId ? 'play' : 'lobby'
+
   return (
     <div id="app">
       <header className="app-header">
-        <h1>UNO Game</h1>
+        <h1>UNO Multiplayer</h1>
         <p className="player-info">
           {connected ? (
             <>
@@ -129,57 +131,39 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        <Routes>
-          <Route path="/" element={<LoginView connected={connected} name={name} setName={setName} onPlay={handleLogin} />} />
-          <Route
-            path="/lobby"
-            element={
-              name.trim() ? (
-                <LobbyView
-                  connected={connected}
-                  rooms={rooms}
-                  name={name}
-                  maxPlayers={maxPlayers}
-                  setMaxPlayers={setMaxPlayers}
-                  onCreate={handleCreateRoom}
-                  onJoin={handleJoinRoom}
-                />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
+        {view === 'login' && <LoginView connected={connected} name={inputName} setName={setInputName} onLogin={handleLogin} />}
+        {view === 'lobby' && (
+          <LobbyView
+            connected={connected}
+            rooms={rooms}
+            name={playerName || inputName}
+            maxPlayers={maxPlayers}
+            setMaxPlayers={setMaxPlayers}
+            onCreate={handleCreateRoom}
+            onJoin={handleJoinRoom}
           />
-          <Route
-            path="/play"
-            element={
-              roomId ? (
-                <GameView
-                  game={game}
-                  round={round}
-                  playerIndex={playerIndex}
-                  currentPlayer={currentPlayer}
-                  connected={connected}
-                  canAct={canAct}
-                  onCardClick={handleCardClick}
-                  conn={conn}
-                  leaveRoom={leaveRoom}
-                  directionLabel={directionLabel}
-                  showColorChooser={showColorChooser}
-                  onChooseColor={handleWildChosen}
-                  onCancelColor={() => {
-                    setShowColorChooser(false)
-                    setPendingWildIndex(null)
-                  }}
-                />
-              ) : (
-                <Navigate to="/lobby" replace />
-              )
-            }
+        )}
+        {view === 'play' && (
+          <GameView
+            game={game}
+            round={round}
+            playerIndex={playerIndex}
+            currentPlayer={currentPlayer}
+            connected={connected}
+            canAct={canAct}
+            onCardClick={handleCardClick}
+            conn={conn}
+            leaveRoom={leaveRoom}
+            directionLabel={directionLabel}
+            showColorChooser={showColorChooser}
+            onChooseColor={handleWildChosen}
+            onCancelColor={() => {
+              setShowColorChooser(false)
+              setPendingWildIndex(null)
+            }}
           />
-        </Routes>
+        )}
       </main>
-
-      <footer className="app-footer"></footer>
     </div>
   )
 }
@@ -188,10 +172,10 @@ type LoginProps = {
   connected: boolean
   name: string
   setName: (v: string) => void
-  onPlay: () => void
+  onLogin: () => void
 }
 
-function LoginView({ connected, name, setName, onPlay }: LoginProps) {
+function LoginView({ connected, name, setName, onLogin }: LoginProps) {
   return (
     <div className="login-container">
       <div className="login-card">
@@ -202,7 +186,10 @@ function LoginView({ connected, name, setName, onPlay }: LoginProps) {
           className="login-form"
           onSubmit={e => {
             e.preventDefault()
-            onPlay()
+            if (name.trim()) {
+              setName(name.trim())
+              onLogin()
+            }
           }}
         >
           <input
@@ -497,4 +484,3 @@ const colorToHex = (color: Color) => {
       return '#95a5a6'
   }
 }
-
