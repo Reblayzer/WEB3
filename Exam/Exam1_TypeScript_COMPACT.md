@@ -318,7 +318,7 @@ toMemento(): RoundMemento {
 
 ### Q7: "How do you avoid runtime crashes from null/undefined?"
 
-**Show:** [round.ts lines 367-372](c:\Users\bolfa\VIA\WEB3\Assignment1\domain\src\model\round.ts#L367-L372)
+**Show:** [round.ts lines 366-371](c:\Users\bolfa\VIA\WEB3\Assignment1\domain\src\model\round.ts#L366-L371)
 
 **Answer:** "Instead of non-null assertion `this.turn!` which bypasses type checking, I use guard clauses: `if (this.turn === undefined) return`. Then I capture `const currentTurn = this.turn` after the check. TypeScript's control flow analysis knows that after the guard, `this.turn` can't be undefined, so `currentTurn` has type `number`, not `number | undefined`. This is safer because there's an actual runtime check."
 
@@ -326,7 +326,7 @@ toMemento(): RoundMemento {
 
 **Show:** [round.ts lines 61-86](c:\Users\bolfa\VIA\WEB3\Assignment1\domain\src\model\round.ts#L61-L86) (deserializeCard)
 
-**Answer:** "I had duplicate card deserialization code - 48 lines repeated for drawPile and discardPile. I extracted it into `deserializeCard` helper with `Readonly<CardMemento>` input and `Card` output. It uses exhaustive checking to handle all card types. Now both piles use `.map(deserializeCard)` - DRY principle. Bonus: the helper validates data format, centralizing error handling."
+**Answer:** "The `deserializeCard` helper converts `CardMemento` (plain objects from JSON) back to properly typed `Card` objects. It takes `Readonly<CardMemento>` as input and returns `Card` output. The function uses exhaustive checking with a switch statement - if I add a new card type, the compiler forces me to handle it here. This centralizes validation logic and type conversion in one place. Both drawPile and discardPile use `.map(deserializeCard)` to transform their arrays, following the DRY principle and ensuring consistent deserialization throughout the codebase."
 
 ---
 
