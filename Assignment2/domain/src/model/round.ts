@@ -1,6 +1,6 @@
 // Round interface and implementation
 
-import type { Card, Color, Shuffler } from './types/card-types'
+import type { Card, Color, Shuffler, CardMemento } from './types/card-types'
 import type { Direction, RoundConfig, RoundMemento, EndListener } from './types/round-types'
 import { colors } from './types/card-types'
 import { createStandardDeck, deckFromMemento, type Deck } from './deck'
@@ -8,6 +8,19 @@ import { isActionCard, isNumberedCard, isWildCard } from './card'
 
 // Re-export for backwards compatibility
 export type { RoundMemento } from './types/round-types'
+
+// Constants
+const DRAW_CARD_PENALTY = 2
+const WILD_DRAW_PENALTY = 4
+const UNO_FAILURE_PENALTY = 4
+const DEFAULT_CARDS_PER_PLAYER = 7
+const MIN_PLAYERS = 2
+const MAX_PLAYERS = 10
+
+// Type guard for constructor overload
+function isRoundMemento(arg: RoundConfig | RoundMemento): arg is RoundMemento {
+  return 'hands' in arg
+}
 
 export interface Round {
   readonly playerCount: number
@@ -22,7 +35,7 @@ export interface Round {
   play(i: number, chosenColor?: Color): Card
   draw(): void
   sayUno(player: number): void
-  catchUnoFailure(args: { accuser: number; accused: number }): boolean
+  catchUnoFailure(args: { readonly accuser: number; readonly accused: number }): boolean
   hasEnded(): boolean
   winner(): number | undefined
   score(): number | undefined
@@ -31,7 +44,8 @@ export interface Round {
 }
 
 const mod = (a: number, n: number) => ((a % n) + n) % n
-const pointsFor = (c: Card): number => {
+
+const pointsFor = (c: Readonly<Card>): number => {
   switch (c.type) {
     case 'NUMBERED': return c.number
     case 'SKIP':
@@ -43,9 +57,38 @@ const pointsFor = (c: Card): number => {
   }
 }
 
+// Helper function to deserialize CardMemento to Card
+function deserializeCard(memento: Readonly<CardMemento>): Card {
+  switch (memento.type) {
+    case 'WILD':
+      return { type: 'WILD' }
+
+    case 'WILD DRAW':
+      return { type: 'WILD DRAW' }
+
+    case 'NUMBERED':
+      if (!memento.color || memento.number === undefined) {
+        throw new Error('Invalid NUMBERED memento: missing color or number')
+      }
+      return { type: 'NUMBERED', color: memento.color, number: memento.number }
+
+    case 'SKIP':
+    case 'REVERSE':
+    case 'DRAW':
+      if (!memento.color) {
+        throw new Error(`Invalid ${memento.type} memento: missing color`)
+      }
+      return { type: memento.type, color: memento.color }
+
+    default:
+      const _exhaustive: never = memento.type
+      throw new Error(`Unknown card type: ${_exhaustive}`)
+  }
+}
+
 class RoundImpl implements Round {
-  players: string[]
-  dealer: number
+  readonly players: readonly string[]
+  readonly dealer: number
   private hands: Card[][] = []
   private drawCards: Card[] = []
   private discardCards: Card[] = [] // top is index 0
@@ -68,13 +111,13 @@ class RoundImpl implements Round {
   constructor(cfg: RoundConfig)
   constructor(m: RoundMemento, _shuffler?: Shuffler<Card>)
   constructor(arg: RoundConfig | RoundMemento, _shuffler?: Shuffler<Card>) {
-    if ('hands' in arg) {
-      const m = arg as RoundMemento
+    if (isRoundMemento(arg)) {
+      const m = arg
       // Store the shuffler for later use
       this.shufflerFn = _shuffler
 
       // Validation
-      if (m.players.length < 2) throw new Error('Need at least 2 players')
+      if (m.players.length < MIN_PLAYERS) throw new Error(`Need at least ${MIN_PLAYERS} players`)
       if (m.hands.length !== m.players.length) throw new Error('Hands count must match players count')
       if (m.discardPile.length === 0) throw new Error('Discard pile cannot be empty')
       if (!colors.includes(m.currentColor)) throw new Error('Invalid current color')
@@ -95,7 +138,7 @@ class RoundImpl implements Round {
 
       // Validate current color consistency with top discard card
       const topCard = m.discardPile[0] as Card
-      if (topCard.type !== 'WILD' && topCard.type !== 'WILD DRAW') {
+      if (!isWildCard(topCard)) {
         if ('color' in topCard && topCard.color !== m.currentColor) {
           throw new Error('Current color inconsistent with top discard card')
         }
@@ -105,33 +148,8 @@ class RoundImpl implements Round {
       this.hands = m.hands.map((h) => h.slice())
 
       // Convert CardMemento arrays to Card arrays
-      this.drawCards = m.drawPile.map(cardMemento => {
-        if (cardMemento.type === 'WILD') return { type: 'WILD' }
-        if (cardMemento.type === 'WILD DRAW') return { type: 'WILD DRAW' }
-        if (cardMemento.type === 'NUMBERED') {
-          if (!cardMemento.color || cardMemento.number === undefined) throw new Error('Invalid NUMBERED memento')
-          return { type: 'NUMBERED', color: cardMemento.color, number: cardMemento.number }
-        }
-        if (cardMemento.type === 'SKIP' || cardMemento.type === 'REVERSE' || cardMemento.type === 'DRAW') {
-          if (!cardMemento.color) throw new Error('Missing color for action card')
-          return { type: cardMemento.type, color: cardMemento.color }
-        }
-        throw new Error('Unknown card type')
-      })
-
-      this.discardCards = m.discardPile.map(cardMemento => {
-        if (cardMemento.type === 'WILD') return { type: 'WILD' }
-        if (cardMemento.type === 'WILD DRAW') return { type: 'WILD DRAW' }
-        if (cardMemento.type === 'NUMBERED') {
-          if (!cardMemento.color || cardMemento.number === undefined) throw new Error('Invalid NUMBERED memento')
-          return { type: 'NUMBERED', color: cardMemento.color, number: cardMemento.number }
-        }
-        if (cardMemento.type === 'SKIP' || cardMemento.type === 'REVERSE' || cardMemento.type === 'DRAW') {
-          if (!cardMemento.color) throw new Error('Missing color for action card')
-          return { type: cardMemento.type, color: cardMemento.color }
-        }
-        throw new Error('Unknown card type')
-      })
+      this.drawCards = m.drawPile.map(deserializeCard)
+      this.discardCards = m.discardPile.map(deserializeCard)
       this.curColor = m.currentColor
       this.dir = m.currentDirection
       this.turn = m.playerInTurn
@@ -151,14 +169,14 @@ class RoundImpl implements Round {
       return
     }
 
-    const cfg = arg as RoundConfig
+    const cfg = arg
     // Store the shuffler for later use
     this.shufflerFn = cfg.shuffler
 
-    if (cfg.players.length < 2) throw new Error('Need at least 2 players')
-    if (cfg.players.length > 10) throw new Error('Cannot have more than 10 players')
+    if (cfg.players.length < MIN_PLAYERS) throw new Error(`Need at least ${MIN_PLAYERS} players`)
+    if (cfg.players.length > MAX_PLAYERS) throw new Error(`Cannot have more than ${MAX_PLAYERS} players`)
     const n = cfg.players.length
-    const k = cfg.cardsPerPlayer ?? 7
+    const k = cfg.cardsPerPlayer ?? DEFAULT_CARDS_PER_PLAYER
     this.players = cfg.players.slice()
     this.dealer = cfg.dealer
     this.preUno = new Array(n).fill(false)
@@ -171,17 +189,22 @@ class RoundImpl implements Round {
     this.hands = Array.from({ length: n }, () => [])
     for (let p = 0; p < n; p++) {
       for (let j = 0; j < k; j++) {
-        const c = deck.deal()!
+        const c = deck.deal()
+        if (!c) throw new Error('Deck ran out of cards during deal')
         this.hands[p].push(c)
       }
     }
 
     // Flip first non-wild to discard; reshuffle remaining if wilds appear first
-    let first = deck.deal()!
-    while (first.type === 'WILD' || first.type === 'WILD DRAW') {
+    let first = deck.deal()
+    if (!first) throw new Error('Deck is empty, cannot start game')
+
+    while (isWildCard(first)) {
       if (!cfg.shuffler) break
       deck.shuffle(cfg.shuffler)
-      first = deck.deal()!
+      const next = deck.deal()
+      if (!next) throw new Error('Deck ran out during first card flip')
+      first = next
     }
     this.discardCards = [first]
 
@@ -203,7 +226,7 @@ class RoundImpl implements Round {
     } else if (first.type === 'SKIP') {
       this.turn = mod(this.dealer + 2, n)
     } else if (first.type === 'DRAW') {
-      this.giveCards(left, 2)
+      this.giveCards(left, DRAW_CARD_PENALTY)
       this.turn = mod(this.dealer + 2, n)
     } else {
       this.turn = left
@@ -218,12 +241,12 @@ class RoundImpl implements Round {
     return this.players.length
   }
 
-  player(i: number) {
+  player(i: number): string {
     if (i < 0 || i >= this.players.length) throw new Error('Player index out of bounds')
     return this.players[i]
   }
 
-  playerHand(i: number) {
+  playerHand(i: number): Readonly<Card[]> {
     return this.hands[i]
   }
 
@@ -241,7 +264,7 @@ class RoundImpl implements Round {
     return this._discardPile
   }
 
-  playerInTurn() {
+  playerInTurn(): number | undefined {
     return this.turn
   }
 
@@ -271,16 +294,16 @@ class RoundImpl implements Round {
     return this.playableAgainst(card, top, this.curColor, true) || card.type === 'WILD'
   }
 
-  private playableAgainst(card: Card, top: Card, currentColor: Color, allowTypeMatch: boolean): boolean {
-    if (top.type === 'WILD' || top.type === 'WILD DRAW') {
+  private playableAgainst(card: Readonly<Card>, top: Readonly<Card>, currentColor: Color, allowTypeMatch: boolean): boolean {
+    if (isWildCard(top)) {
       if ('color' in card) return card.color === currentColor
       return true
     }
-    if (card.type === 'NUMBERED') {
-      if (top.type === 'NUMBERED') return card.color === currentColor || card.number === top.number
+    if (isNumberedCard(card)) {
+      if (isNumberedCard(top)) return card.color === currentColor || card.number === top.number
       return card.color === currentColor
     }
-    if (card.type === 'SKIP' || card.type === 'REVERSE' || card.type === 'DRAW') {
+    if (isActionCard(card)) {
       if (allowTypeMatch && top.type === card.type) return true
       return card.color === currentColor
     }
@@ -289,11 +312,12 @@ class RoundImpl implements Round {
 
   play(i: number, chosenColor?: Color): Card {
     if (!this.canPlay(i)) throw new Error('Illegal play')
-    const p = this.turn!
+    if (this.turn === undefined) throw new Error('No player in turn')
+    const p = this.turn
     const card = this.hands[p].splice(i, 1)[0]
 
     // Validate color parameter usage
-    if (card.type === 'WILD' || card.type === 'WILD DRAW') {
+    if (isWildCard(card)) {
       if (!chosenColor) throw new Error('Chosen color required for wild')
       this.curColor = chosenColor
     } else {
@@ -338,40 +362,54 @@ class RoundImpl implements Round {
     return this.hands[this.turn].some((_, i) => this.canPlay(i))
   }
 
-  private advanceAfterPlay(card: Card) {
+  private advanceAfterPlay(card: Readonly<Card>) {
+    if (this.turn === undefined) return
+
     const n = this.playerCount
     const step = this.dir === 'clockwise' ? 1 : -1
     const next = (x: number, s = step) => mod(x + s, n)
+    const currentTurn = this.turn
 
-    if (card.type === 'SKIP') {
-      this.turn = next(this.turn!, step * 2) // Skip one player
-      return
+    switch (card.type) {
+      case 'SKIP':
+        this.turn = next(currentTurn, step * 2)
+        break
+
+      case 'REVERSE':
+        if (n === 2) {
+          // In 2-player game, reverse acts like skip
+          this.turn = next(currentTurn, step * 2)
+        } else {
+          // Change direction and move to next player in new direction
+          this.dir = this.dir === 'clockwise' ? 'counterclockwise' : 'clockwise'
+          const newStep = this.dir === 'clockwise' ? 1 : -1
+          this.turn = mod(currentTurn + newStep, n)
+        }
+        break
+
+      case 'DRAW':
+        const drawVictim = next(currentTurn)
+        this.giveCards(drawVictim, DRAW_CARD_PENALTY)
+        this.turn = next(drawVictim)
+        break
+
+      case 'WILD DRAW':
+        const wildDrawVictim = next(currentTurn)
+        this.giveCards(wildDrawVictim, WILD_DRAW_PENALTY)
+        this.turn = next(wildDrawVictim)
+        break
+
+      case 'NUMBERED':
+      case 'WILD':
+        // Regular cards - just advance turn
+        this.turn = next(currentTurn)
+        break
+
+      default:
+        // Exhaustive check - compile error if we miss a card type
+        const _exhaustive: never = card
+        throw new Error(`Unhandled card type: ${(_exhaustive as Card).type}`)
     }
-    if (card.type === 'REVERSE') {
-      if (n === 2) {
-        // In 2-player game, reverse acts like skip
-        this.turn = next(this.turn!, step * 2)
-        return
-      }
-      // Change direction and move to next player in new direction
-      this.dir = this.dir === 'clockwise' ? 'counterclockwise' : 'clockwise'
-      const newStep = this.dir === 'clockwise' ? 1 : -1
-      this.turn = mod(this.turn! + newStep, n)
-      return
-    }
-    if (card.type === 'DRAW') {
-      const victim = next(this.turn!)
-      this.giveCards(victim, 2)
-      this.turn = next(victim)
-      return
-    }
-    if (card.type === 'WILD DRAW') {
-      const victim = next(this.turn!)
-      this.giveCards(victim, 4)
-      this.turn = next(victim)
-      return
-    }
-    this.turn = next(this.turn!)
   }
 
   draw(): void {
@@ -402,8 +440,7 @@ class RoundImpl implements Round {
     const top = this.discardCards[0]
     const playable =
       this.playableAgainst(card, top, this.curColor, true) ||
-      card.type === 'WILD' ||
-      card.type === 'WILD DRAW'
+      isWildCard(card)
     if (!playable) {
       const n = this.playerCount
       const step = this.dir === 'clockwise' ? 1 : -1
@@ -472,7 +509,8 @@ class RoundImpl implements Round {
     // Otherwise ignore silently (tests don't require a throw in this case)
   }
 
-  catchUnoFailure({ accuser, accused }: { accuser: number; accused: number }): boolean {
+  catchUnoFailure(args: { readonly accuser: number; readonly accused: number }): boolean {
+    const { accuser, accused } = args
     // boundaries
     if (accused < 0 || accused >= this.playerCount) throw new Error('Invalid accused')
     if (accuser < 0 || accuser >= this.playerCount) throw new Error('Invalid accuser')
@@ -480,7 +518,7 @@ class RoundImpl implements Round {
     if (!this.unoOpen || this.unoTarget !== accused) return false
     if (this.unoSaid) return false
 
-    this.giveCards(accused, 4)
+    this.giveCards(accused, UNO_FAILURE_PENALTY)
     this.unoOpen = false
     this.unoTarget = undefined
     this.unoSaid = false
@@ -488,10 +526,11 @@ class RoundImpl implements Round {
     return true
   }
 
-  hasEnded() {
+  hasEnded(): boolean {
     return this.ended
   }
-  winner() {
+
+  winner(): number | undefined {
     return this.theWinner
   }
 
@@ -505,14 +544,14 @@ class RoundImpl implements Round {
     return sum
   }
 
-  onEnd(l: EndListener) {
+  onEnd(l: EndListener): void {
     this.listeners.push(l)
   }
 
   toMemento(): RoundMemento {
     return {
-      players: this.players.slice(),
-      hands: this.hands.map((h) => h.slice()),
+      players: [...this.players],
+      hands: this.hands.map((h) => [...h]),
       drawPile: this.drawCards.map((c) => ({ ...c })),
       discardPile: this.discardCards.map((c) => ({ ...c })),
       currentColor: this.curColor,

@@ -6,6 +6,16 @@ import { createRound, createRoundFromMemento, type Round } from './round'
 // Re-export for backwards compatibility
 export type { GameMemento } from './types/game-types'
 
+// Constants
+const MIN_PLAYERS = 2
+const DEFAULT_TARGET_SCORE = 500
+const DEFAULT_PLAYERS = ['A', 'B'] as const
+
+// Type guard for constructor overload
+function isGameMemento(arg: GameConfig | GameMemento): arg is GameMemento {
+  return 'scores' in arg
+}
+
 export interface Game {
   readonly playerCount: number
   readonly targetScore: number
@@ -17,23 +27,22 @@ export interface Game {
 }
 
 class GameImpl implements Game {
-  players: string[]
-  target: number
+  readonly players: readonly string[]
+  readonly target: number
   private scores: number[]
   private roundInst: Round | undefined
   private theWinner: number | undefined
   private cardsPerPlayer?: number
   private randomizer?: (bound: number) => number
-  private shuffler?: <T>(xs: T[]) => void
 
   constructor(cfg: GameConfig)
   constructor(m: GameMemento)
   constructor(arg: GameConfig | GameMemento) {
-    if ('scores' in arg) {
-      const m = arg as GameMemento
+    if (isGameMemento(arg)) {
+      const m = arg
 
       // Validation
-      if (m.players.length < 2) throw new Error('Need at least 2 players')
+      if (m.players.length < MIN_PLAYERS) throw new Error(`Need at least ${MIN_PLAYERS} players`)
       if (m.targetScore <= 0) throw new Error('Target score must be positive')
       if (m.scores.length !== m.players.length) throw new Error('Scores count must match players count')
       if (m.scores.some(score => score < 0)) throw new Error('Scores cannot be negative')
@@ -62,29 +71,30 @@ class GameImpl implements Game {
       const w = this.scores.findIndex(s => s >= this.target)
       this.theWinner = w >= 0 ? w : undefined
     } else {
-      const cfg = arg as GameConfig
+      const cfg = arg
 
       // Validation for GameConfig
-      if (cfg.players && cfg.players.length < 2) throw new Error('Need at least 2 players')
+      if (cfg.players && cfg.players.length < MIN_PLAYERS) throw new Error(`Need at least ${MIN_PLAYERS} players`)
       if (cfg.targetScore !== undefined && cfg.targetScore <= 0) throw new Error('Target score must be positive')
 
-      this.players = cfg.players ?? ['A', 'B']
-      this.target = cfg.targetScore ?? 500
+      this.players = cfg.players ?? [...DEFAULT_PLAYERS]
+      this.target = cfg.targetScore ?? DEFAULT_TARGET_SCORE
       this.scores = new Array(this.players.length).fill(0)
       this.cardsPerPlayer = cfg.cardsPerPlayer
       this.randomizer = cfg.randomizer
-      this.shuffler = cfg.shuffler
 
       // Start the first round
       this.startNewRound()
     }
   }
 
-  private setupRoundEndListener() {
+  private setupRoundEndListener(): void {
     if (!this.roundInst) return
 
     this.roundInst.onEnd((event) => {
-      const score = this.roundInst!.score()
+      if (!this.roundInst) return  // Guard against undefined
+
+      const score = this.roundInst.score()
       if (score !== undefined) {
         this.scores[event.winner] += score
         // Check if game is won
@@ -99,28 +109,27 @@ class GameImpl implements Game {
     })
   }
 
-  private startNewRound() {
+  private startNewRound(): void {
     const dealer = this.randomizer ? this.randomizer(this.players.length) : Math.floor(Math.random() * this.players.length)
     this.roundInst = createRound({
-      players: this.players,
+      players: [...this.players],
       dealer,
-      cardsPerPlayer: this.cardsPerPlayer,
-      shuffler: this.shuffler
+      cardsPerPlayer: this.cardsPerPlayer
     })
     this.setupRoundEndListener()
   }
 
-  get playerCount() { return this.players.length }
-  get targetScore() { return this.target }
+  get playerCount(): number { return this.players.length }
+  get targetScore(): number { return this.target }
 
-  player(i: number) {
+  player(i: number): string {
     if (i < 0 || i >= this.players.length) throw new Error('Player index out of bounds')
     return this.players[i]
   }
 
-  score(i: number) { return this.scores[i] }
-  winner() { return this.theWinner }
-  currentRound() { return this.roundInst }
+  score(i: number): number { return this.scores[i] }
+  winner(): number | undefined { return this.theWinner }
+  currentRound(): Round | undefined { return this.roundInst }
 
   toMemento(): GameMemento {
     const memento: GameMemento = {
