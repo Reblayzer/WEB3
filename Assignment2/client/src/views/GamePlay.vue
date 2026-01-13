@@ -53,7 +53,7 @@
       </div>
 
       <!-- Human Player's Hand -->
-      <div v-if="gameStore.currentPlayerIndex === 0" class="player-hand-section">
+      <div v-show="gameStore.currentPlayerIndex === 0" class="player-hand-section">
         <h3>Your Hand</h3>
         <PlayerHand 
           :cards="gameStore.players[0].hand"
@@ -62,14 +62,14 @@
         />
         <div class="hand-actions">
           <button 
-            v-if="canSayUno"
+            v-show="canSayUno"
             @click="handleSayUno"
             class="uno-button"
           >
             Say UNO!
           </button>
           <button 
-            v-if="canCatchUnoFailure"
+            v-show="canCatchUnoFailure"
             @click="handleCatchUnoFailure"
             class="catch-button"
           >
@@ -79,14 +79,14 @@
       </div>
 
       <!-- Bot Turn Indicator -->
-      <div v-else class="bot-turn-indicator">
+      <div v-show="gameStore.currentPlayerIndex !== 0" class="bot-turn-indicator">
         <div class="spinner"></div>
-        <p>{{ gameStore.players[gameStore.currentPlayerIndex].name }} is thinking...</p>
+        <p>{{ gameStore.players[gameStore.currentPlayerIndex]?.name }} is thinking...</p>
       </div>
 
       <!-- Color Chooser Modal -->
       <ColorChooser 
-        v-if="showColorChooser"
+        v-show="showColorChooser"
         @choose-color="handleColorChosen"
       />
 
@@ -120,177 +120,26 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import GameBoard from '../components/GameBoard.vue'
 import PlayerHand from '../components/PlayerHand.vue'
 import ColorChooser from '../components/ColorChooser.vue'
+import { useGamePlay } from '@/composables/useGamePlay'
 
-const router = useRouter()
 const gameStore = useGameStore()
-const showColorChooser = ref(false)
-const pendingWildCard = ref(null)
-const unoCaught = ref(false) // Track if UNO was just caught
-const directionLabel = computed(() => gameStore.direction === 1 ? 'clockwise' : 'counterclockwise')
-
-// Reset unoCaught when turn changes
-watch(() => gameStore.currentPlayerIndex, () => {
-  unoCaught.value = false
-})
-
-// Check if game is initialized
-onMounted(() => {
-  // If there's no game at all, redirect immediately
-  if (!gameStore.game) {
-    console.log('No game found, redirecting to setup page')
-    router.push('/')
-    return
-  }
-  
-  // Otherwise, give the game a moment to initialize from async startRound
-  setTimeout(() => {
-    if (!isGameReady.value) {
-      console.log('Game not ready after initialization period, redirecting to setup page')
-      router.push('/')
-    }
-  }, 1000) // Wait 1 second for workers to initialize
-})
-
-// Watch for game over
-watch(() => gameStore.gameState, (newState, oldState) => {
-  console.log('Game state changed from:', oldState, 'to:', newState)
-  if (newState === 'FINISHED') {
-    console.log('Game finished! Navigating to game over page in 1.5 seconds...')
-    setTimeout(() => {
-      console.log('Navigating to /gameover now')
-      router.push('/gameover')
-    }, 1500) // Short delay to show "Game Over" message
-  }
-}, { immediate: true })
-
-// Computed properties
-const isGameReady = computed(() => {
-  return gameStore.gameState === 'IN_PROGRESS' && 
-         gameStore.players.length > 0 && 
-         gameStore.players[0] !== undefined &&
-         gameStore.drawPile !== undefined &&
-         gameStore.drawPile !== null &&
-         Array.isArray(gameStore.drawPile) &&
-         gameStore.topCard !== null
-})
-
-const playableCards = computed(() => {
-  if (!isGameReady.value) return []
-  // Explicitly depend on topCard and currentColor to trigger re-computation
-  const top = gameStore.topCard
-  const color = gameStore.currentColor
-  const hand = gameStore.players[0].hand
-  
-  return hand.map((card, index) => ({
-    ...card,
-    index,
-    playable: gameStore.canPlayCard(card)
-  }))
-})
-
-const canSayUno = computed(() => {
-  if (!isGameReady.value) return false
-  const player = gameStore.players[0]
-  // Can say UNO when you have 2 cards, at least 1 is playable, and you haven't called UNO yet
-  if (player.hand.length !== 2 || player.hasCalledUno) return false
-  
-  // Check if at least one card is playable
-  const hasPlayableCard = player.hand.some(card => gameStore.canPlayCard(card))
-  return hasPlayableCard
-})
-
-const canCatchUnoFailure = computed(() => {
-  if (!isGameReady.value || unoCaught.value) return false
-  // Show button if any non-human player has exactly 1 card
-  // Domain model will enforce UNO window timing
-  return gameStore.players.some((player, index) => 
-    index !== 0 && player.hand.length === 1
-  )
-})
-
-// Event handlers
-const handleDrawCard = async () => {
-  if (gameStore.currentPlayerIndex !== 0) return
-  
-  await gameStore.drawCard()
-}
-
-const handlePlayCard = async (cardIndex) => {
-  const card = gameStore.players[0].hand[cardIndex]
-  
-  if (!gameStore.canPlayCard(card)) {
-    gameStore.addLog('Cannot play that card!')
-    return
-  }
-
-  // If it's a wild card, show color chooser
-  if (card.type === 'WILD' || card.type === 'WILD DRAW') {
-    pendingWildCard.value = { card, cardIndex }
-    showColorChooser.value = true
-    return
-  }
-
-  // Play the card - store handles everything
-  try {
-    await gameStore.playCard(cardIndex)
-  } catch (error) {
-    gameStore.addLog(error.message)
-  }
-}
-
-const handleColorChosen = async (color) => {
-  // Validate that a color was actually chosen
-  if (!color) {
-    gameStore.addLog('Please choose a color for the wild card')
-    return
-  }
-  
-  showColorChooser.value = false
-  
-  if (pendingWildCard.value !== null) {
-    try {
-      // Use cardIndex to play the wild card with chosen color
-      await gameStore.playCard(pendingWildCard.value.cardIndex, color)
-    } catch (error) {
-      gameStore.addLog(error.message)
-    }
-    pendingWildCard.value = null
-  }
-}
-
-const handleSayUno = () => {
-  gameStore.callUno()
-}
-
-const handleCatchUnoFailure = () => {
-  // Call the store's catchUnoFailure which delegates to domain model
-  // Domain model handles giving penalty cards
-  const success = gameStore.catchUnoFailure(0) // 0 = human player is accuser
-  
-  if (success) {
-    console.log('Successfully caught UNO failure')
-    unoCaught.value = true // Hide button after successful catch
-    
-    // Check if round ended after catching (player may have won)
-    const round = gameStore.currentRound
-    if (round && round.winner() !== null && round.winner() !== undefined) {
-      console.log('Round ended after catching UNO, winner:', gameStore.game.player(round.winner()))
-    }
-  } else {
-    console.log('Failed to catch UNO failure - window may have closed')
-  }
-}
-
-// Reset unoCaught flag when turn changes
-watch(() => gameStore.currentPlayerIndex, () => {
-  unoCaught.value = false
-})
+const {
+  showColorChooser,
+  isGameReady,
+  directionLabel,
+  playableCards,
+  canSayUno,
+  canCatchUnoFailure,
+  handleDrawCard,
+  handlePlayCard,
+  handleColorChosen,
+  handleSayUno,
+  handleCatchUnoFailure
+} = useGamePlay()
 </script>
 
 <style scoped>

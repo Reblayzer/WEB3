@@ -15,5 +15,4 @@ export type GameConfig = {
   targetScore?: number
   randomizer?: (bound: number) => number
   cardsPerPlayer?: number
-  shuffler?: <T>(xs: T[]) => void
 }

@@ -28,6 +28,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { isWildCard } from '@/utils/cardUtils'
 
 const props = defineProps({
   card: {
@@ -43,7 +44,7 @@ const props = defineProps({
 const emit = defineEmits(['click'])
 
 const colorClass = computed(() => {
-  if (props.card.type === 'WILD' || props.card.type === 'WILD DRAW') {
+  if (isWildCard(props.card)) {
     return 'wild-card'
   }
   return `color-${props.card.color?.toLowerCase() || 'none'}`

@@ -64,7 +64,7 @@
         </button>
       </div>
 
-      <div v-if="showLog" class="game-log-modal">
+      <div v-show="showLog" class="game-log-modal">
         <div class="log-content">
           <h3>Complete Game Log</h3>
           <div class="log-entries">

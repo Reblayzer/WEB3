@@ -2,18 +2,18 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const usePlayerStore = defineStore('player', () => {
-  const playerName = ref(localStorage.getItem('playerName') || '')
-  
-  function setPlayerName(name) {
+  const playerName = ref<string>(localStorage.getItem('playerName') || '')
+
+  function setPlayerName(name: string): void {
     playerName.value = name
     localStorage.setItem('playerName', name)
   }
-  
-  function clearPlayer() {
+
+  function clearPlayer(): void {
     playerName.value = ''
     localStorage.removeItem('playerName')
   }
-  
+
   return {
     playerName,
     setPlayerName,

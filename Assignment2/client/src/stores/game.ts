@@ -1,116 +1,142 @@
 import { defineStore } from 'pinia'
-import { ref, computed, nextTick } from 'vue'
-import { createGame } from '../../../domain/src/model/game'
+import { ref, computed, nextTick, type Ref, type ComputedRef } from 'vue'
+import { createGame, type Game } from 'domain/model/game'
+import type { Round } from 'domain/model/round'
+import type { Card, Color } from 'domain/model/types/card-types'
 import { usePlayerStore } from './player'
-import Worker from '../workers/bot.worker.js?worker'
+import { isWildCard, formatCard } from '@/utils/cardUtils'
+import { useBotWorkers } from '@/composables/useBotWorkers'
+
+// Type definitions for store state
+interface PlayerInfo {
+  name: string
+  hand: readonly Card[]
+  hasCalledUno: boolean
+  score: number
+}
+
+interface OtherPlayerInfo {
+  name: string
+  cardCount: number
+  hasCalledUno: boolean
+}
+
+type GameState = 'SETUP' | 'IN_PROGRESS' | 'ROUND_OVER' | 'FINISHED'
 
 export const useGameStore = defineStore('game', () => {
   const playerStore = usePlayerStore()
-  
+  const { initializeBot, requestBotAction, terminateAllBots, isBotThinking } = useBotWorkers()
+
   // Core domain model instance
-  const game = ref(null)
-  
+  const game: Ref<Game | null> = ref(null)
+
   // UI-only state
-  const gameStarted = ref(false)
-  const roundOver = ref(false)
-  const roundWinner = ref(null)
-  const gameLog = ref([])
-  const roundKey = ref(0) // Force reactivity when round changes
-  
-  // Bot workers
-  const botWorkers = ref({})
-  const botThinking = ref({})
-  
+  const gameStarted = ref<boolean>(false)
+  const roundOver = ref<boolean>(false)
+  const roundWinner = ref<string | null>(null)
+  const gameLog = ref<string[]>([])
+  const roundKey = ref<number>(0) // Force reactivity when round changes
+
   // UNO state (UI tracking for pre-announce)
-  const hasCalledUno = ref({})
-  const canCallUno = ref({})
+  const hasCalledUno = ref<Record<number, boolean>>({})
+  const canCallUno = ref<Record<number, boolean>>({})
 
   // Computed properties delegating to domain model
-  const currentRound = computed(() => {
+  const currentRound: ComputedRef<Round | null> = computed(() => {
     // Access roundKey to trigger reactivity
     roundKey.value
-    return game.value?.currentRound()
+    return game.value?.currentRound() ?? null
   })
-  
-  const players = computed(() => {
+
+  const players: ComputedRef<PlayerInfo[]> = computed(() => {
     // Access roundKey to trigger reactivity
     roundKey.value
     if (!game.value) return []
     const count = game.value.playerCount
     return Array.from({ length: count }, (_, i) => ({
-      name: game.value.player(i),
+      name: game.value!.player(i),
       hand: currentRound.value?.playerHand(i) || [],
       hasCalledUno: hasCalledUno.value[i] || false,
-      score: game.value.score(i)
+      score: game.value!.score(i)
     }))
   })
-  
-  const scores = computed(() => {
+
+  const scores: ComputedRef<Record<string, number>> = computed(() => {
     // Access roundKey to trigger reactivity when scores change
     roundKey.value
     if (!game.value) return {}
-    const result = {}
+    const result: Record<string, number> = {}
     for (let i = 0; i < game.value.playerCount; i++) {
       result[game.value.player(i)] = game.value.score(i)
     }
     return result
   })
-  
-  const currentPlayerIndex = computed(() => currentRound.value?.playerInTurn() ?? 0)
-  
-  const currentPlayer = computed(() => {
+
+  const currentPlayerIndex: ComputedRef<number> = computed(() =>
+    currentRound.value?.playerInTurn() ?? 0
+  )
+
+  const currentPlayer: ComputedRef<PlayerInfo | null> = computed(() => {
     const idx = currentPlayerIndex.value
     return players.value[idx] ?? null
   })
-  
-  const isHumanTurn = computed(() => currentPlayer.value?.name === playerStore.playerName)
-  
-  const humanPlayer = computed(() => players.value.find(p => p.name === playerStore.playerName))
-  
-  const humanHand = computed(() => humanPlayer.value?.hand || [])
-  
-  const topCard = computed(() => {
+
+  const isHumanTurn: ComputedRef<boolean> = computed(() =>
+    currentPlayer.value?.name === playerStore.playerName
+  )
+
+  const humanPlayer: ComputedRef<PlayerInfo | undefined> = computed(() =>
+    players.value.find((p: PlayerInfo) => p.name === playerStore.playerName)
+  )
+
+  const humanHand: ComputedRef<readonly Card[]> = computed(() =>
+    humanPlayer.value?.hand || []
+  )
+
+  const topCard: ComputedRef<Card | null> = computed(() => {
     // Access roundKey to trigger reactivity
     roundKey.value
     const discard = currentRound.value?.discardPile()
     return discard?.top() ?? null
   })
-  
-  const currentColor = computed(() => {
+
+  const currentColor: ComputedRef<Color | null> = computed(() => {
     // Access roundKey to trigger reactivity
     roundKey.value
     if (!currentRound.value) return null
     const memento = currentRound.value.toMemento()
     const color = memento.currentColor
     // Ensure we return a string, not an object
-    return typeof color === 'string' ? color : null
+    return typeof color === 'string' ? (color as Color) : null
   })
-  
-  const direction = computed(() => {
+
+  const direction: ComputedRef<1 | -1> = computed(() => {
     // Access roundKey to trigger reactivity
     roundKey.value
     if (!currentRound.value) return 1
     const memento = currentRound.value.toMemento()
     return memento.currentDirection === 'clockwise' ? 1 : -1
   })
-  
-  const gameWinner = computed(() => {
+
+  const gameWinner: ComputedRef<number | null> = computed(() => {
     // Access roundKey to trigger reactivity
     roundKey.value
     return game.value?.winner() ?? null
   })
-  
-  const gameState = computed(() => {
+
+  const gameState: ComputedRef<GameState> = computed(() => {
     if (!game.value) return 'SETUP'
     if (gameWinner.value !== null && gameWinner.value !== undefined) return 'FINISHED'
     if (roundOver.value) return 'ROUND_OVER'
     if (!gameStarted.value) return 'SETUP'
     return 'IN_PROGRESS'
   })
-  
-  const targetScore = computed(() => game.value?.targetScore ?? 500)
-  
-  const drawPile = computed(() => {
+
+  const targetScore: ComputedRef<number> = computed(() =>
+    game.value?.targetScore ?? 500
+  )
+
+  const drawPile: ComputedRef<null[]> = computed(() => {
     // Access roundKey to trigger reactivity
     roundKey.value
     const pile = currentRound.value?.drawPile()
@@ -119,21 +145,21 @@ export const useGameStore = defineStore('game', () => {
     // View checks Array.isArray and uses .length
     return Array(size).fill(null) // Array of nulls with correct length
   })
-  
+
   const discardPile = computed(() => {
     // Access roundKey to trigger reactivity
     roundKey.value
     const pile = currentRound.value?.discardPile()
     if (!pile) return []
     // Convert Deck to array - get all cards from memento
-    const memento = currentRound.value.toMemento()
+    const memento = currentRound.value!.toMemento()
     return memento.discardPile
   })
 
   // Initialize game
-  function setupGame(numBotsOrPlayerNames) {
+  function setupGame(numBotsOrPlayerNames: number | string[]): void {
     // Setup player names array
-    let playerNames
+    let playerNames: string[]
     if (typeof numBotsOrPlayerNames === 'number') {
       const numBots = numBotsOrPlayerNames
       playerNames = [playerStore.playerName]
@@ -144,130 +170,84 @@ export const useGameStore = defineStore('game', () => {
       playerNames = numBotsOrPlayerNames
     }
 
-    // Create game from domain model with Fisher-Yates shuffler for card randomization
+    // Create game from domain model
     game.value = createGame({
       players: playerNames,
-      targetScore: 500,
-      shuffler: (array) => {
-        for (let i = array.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [array[i], array[j]] = [array[j], array[i]]
-        }
-      }
+      targetScore: 500
     })
-    
+
     // Mark game as started
     gameStarted.value = true
-    
+
     // Initialize bot workers for AI players
-    playerNames.forEach((name, index) => {
+    playerNames.forEach((name) => {
       if (name !== playerStore.playerName) {
-        botWorkers.value[name] = new Worker()
-        
-        botWorkers.value[name].postMessage({
-          type: 'INIT',
-          botName: name
-        })
-        
-        botWorkers.value[name].onmessage = (e) => {
-          const { type, cardIndex, card: expectedCard, chosenColor } = e.data
-          botThinking.value[name] = false
-          
-          if (type === 'PLAY_CARD') {
-            const round = currentRound.value
-            if (!round) return
-            
-            const botPlayerIndex = players.value.findIndex(p => p.name === name)
-            if (botPlayerIndex === -1 || botPlayerIndex !== round.playerInTurn()) return
-            
-            // Verify the card at this index is still the same card the bot intended
-            const currentHand = round.playerHand(botPlayerIndex)
-            const actualCard = currentHand[cardIndex]
-            
-            if (!actualCard || !expectedCard) return
-            
-            const cardMatches = actualCard.type === expectedCard.type &&
-                                actualCard.color === expectedCard.color &&
-                                (actualCard.type !== 'NUMBERED' || actualCard.number === expectedCard.number)
-            
-            if (!cardMatches) {
-              // Game state changed while bot was thinking
-              try {
-                drawCard()
-              } catch (error) {
-                console.error('Bot failed to draw:', error)
-              }
-              return
-            }
-            
-            // Play the bot's card
+        initializeBot(name, (botName, action) => {
+          if (action.type === 'PLAY') {
             try {
-              playCard(cardIndex, chosenColor)
+              playCard(action.cardIndex!, action.chosenColor)
             } catch (error) {
-              // Bot made illegal play - draw as penalty
+              console.error('Bot play error:', error)
               try {
                 drawCard()
               } catch (drawError) {
                 nextTurn()
               }
             }
-          } else if (type === 'DRAW_CARD') {
+          } else if (action.type === 'DRAW') {
             try {
               drawCard()
             } catch (error) {
-              console.error('Bot failed to draw:', error)
+              console.error('Bot draw error:', error)
             }
           }
-        }
-        
-        botWorkers.value[name].onerror = (error) => {
-          console.error('Bot worker error:', error)
-        }
+        })
       }
     })
-    
+
     if (!isHumanTurn.value) {
       setTimeout(() => botTurn(), 1000)
     }
   }
 
   // Play a card by index with optional color for wild cards
-  function playCard(cardIndex, chosenColor = null) {
+  function playCard(cardIndex: number, chosenColor: Color | null = null): void {
     const round = currentRound.value
     if (!round) return
 
     const pIdx = currentPlayerIndex.value
-    
+
     if (pIdx !== round.playerInTurn()) return
-    
+
     try {
       // Get the card being played to check if it's a wild card
       const hand = round.playerHand(pIdx)
       const card = hand[cardIndex]
-      const isWild = card && (card.type === 'WILD' || card.type === 'WILD DRAW')
-      
+
       // Only pass color for wild cards (domain expects: play(index, color))
-      if (isWild && chosenColor) {
+      if (isWildCard(card) && chosenColor) {
         round.play(cardIndex, chosenColor)
       } else {
         round.play(cardIndex)
       }
-      
+
       const playedCard = round.discardPile().top()
-      
+
       // Reset UNO call after playing (use spread for reactivity)
       hasCalledUno.value = { ...hasCalledUno.value, [pIdx]: false }
       canCallUno.value = { ...canCallUno.value, [pIdx]: false }
-      
-      addToLog(`${game.value.player(pIdx)} played ${formatCard(playedCard)}`)
+
+      if (playedCard) {
+        addToLog(`${game.value!.player(pIdx)} played ${formatCard(playedCard)}`)
+      }
 
       // Check if round ended by comparing round references
       const freshRound = currentRound.value
-      
+
       if (!freshRound) {
         return
       }
-      
+
       // If the round reference changed, the domain started a new round automatically
       if (freshRound !== round) {
         handleRoundEnd()
@@ -278,10 +258,10 @@ export const useGameStore = defineStore('game', () => {
       nextTurn()
     } catch (error) {
       console.error('Error playing card:', error)
-      
+
       // If it's a bot that made an illegal play, force them to draw and continue
-      const player = game.value.player(pIdx)
-      if (player && player !== 'Alex') {
+      const player = game.value!.player(pIdx)
+      if (player && player !== playerStore.playerName) {
         try {
           drawCard()
         } catch (drawError) {
@@ -293,29 +273,23 @@ export const useGameStore = defineStore('game', () => {
   }
 
   // Draw a card
-  function drawCard() {
+  function drawCard(): void {
     const round = currentRound.value
     if (!round) return
 
     const pIdx = currentPlayerIndex.value
-    
+
     try {
-      const winner = round.winner()
-      if (winner !== null && winner !== undefined) {
-        handleRoundEnd()
-        return
-      }
-      
       round.draw()
-      
+
       hasCalledUno.value[pIdx] = false
       canCallUno.value[pIdx] = false
-      
-      addToLog(`${game.value.player(pIdx)} drew a card`)
-      
+
+      addToLog(`${game.value!.player(pIdx)} drew a card`)
+
       nextTurn()
     } catch (error) {
-      if (error.message && error.message.includes('Round ended')) {
+      if (error instanceof Error && error.message && error.message.includes('Round ended')) {
         handleRoundEnd()
       } else {
         console.error('Error drawing card:', error)
@@ -324,43 +298,43 @@ export const useGameStore = defineStore('game', () => {
   }
 
   // Call UNO
-  function callUno() {
+  function callUno(): void {
     const pIdx = currentPlayerIndex.value
     const round = currentRound.value
     if (!round) return
 
     const hand = round.playerHand(pIdx)
-    
+
     if (hand.length === 2) {
-      const hasPlayable = hand.some((_, idx) => round.canPlay(idx))
+      const hasPlayable = hand.some((_: Card, idx: number) => round.canPlay(idx))
       if (hasPlayable) {
         hasCalledUno.value = { ...hasCalledUno.value, [pIdx]: true }
         canCallUno.value = { ...canCallUno.value, [pIdx]: true }
-        addToLog(`${game.value.player(pIdx)} called UNO!`)
+        addToLog(`${game.value!.player(pIdx)} called UNO!`)
       }
     }
   }
 
   // Catch UNO failure
-  function catchUnoFailure(accuserIndex) {
+  function catchUnoFailure(accuserIndex: number): boolean {
     const round = currentRound.value
     if (!round) return false
 
-    for (let i = 0; i < game.value.playerCount; i++) {
+    for (let i = 0; i < game.value!.playerCount; i++) {
       if (i === accuserIndex) continue
-      
+
       const hand = round.playerHand(i)
       if (hand.length === 1) {
         try {
           const success = round.catchUnoFailure({ accuser: accuserIndex, accused: i })
           if (success) {
-            addToLog(`${game.value.player(accuserIndex)} caught ${game.value.player(i)} for not calling UNO! +4 cards`)
-            
+            addToLog(`${game.value!.player(accuserIndex)} caught ${game.value!.player(i)} for not calling UNO! +4 cards`)
+
             const freshRound = currentRound.value
             if (freshRound !== round) {
               handleRoundEnd()
             }
-            
+
             return true
           }
         } catch (error) {
@@ -372,41 +346,41 @@ export const useGameStore = defineStore('game', () => {
   }
 
   // Handle round end
-  function handleRoundEnd() {
+  function handleRoundEnd(): void {
     const oldRound = currentRound.value
     if (!oldRound) return
-    
+
     const winnerIdx = oldRound.winner()
     if (winnerIdx === null || winnerIdx === undefined) return
-    
-    roundWinner.value = game.value.player(winnerIdx)
+
+    roundWinner.value = game.value!.player(winnerIdx)
     const roundScore = oldRound.score()
     addToLog(`${roundWinner.value} won the round with ${roundScore} points!`)
-    
+
     // Wait for domain model's event listeners to complete
     nextTick(() => {
       setTimeout(() => {
         roundKey.value++
-        
+
         // Show current scores
-        const scores = []
-        for (let i = 0; i < game.value.playerCount; i++) {
-          scores.push(`${game.value.player(i)}: ${game.value.score(i)}`)
+        const scores: string[] = []
+        for (let i = 0; i < game.value!.playerCount; i++) {
+          scores.push(`${game.value!.player(i)}: ${game.value!.score(i)}`)
         }
         addToLog(`Scores: ${scores.join(', ')}`)
-        
+
         const overallWinner = gameWinner.value
-        
+
         if (overallWinner !== null && overallWinner !== undefined) {
-          addToLog(`🎉 ${game.value.player(overallWinner)} wins the game! 🎉`)
+          addToLog(`🎉 ${game.value!.player(overallWinner)} wins the game! 🎉`)
         } else {
           addToLog(`Starting new round... (target: ${targetScore.value} points)`)
-          
+
           roundOver.value = false
           roundWinner.value = null
           hasCalledUno.value = {}
           canCallUno.value = {}
-          
+
           setTimeout(() => {
             if (!isHumanTurn.value) {
               botTurn()
@@ -418,10 +392,10 @@ export const useGameStore = defineStore('game', () => {
   }
 
   // Move to next turn
-  function nextTurn() {
+  function nextTurn(): void {
     const round = currentRound.value
     if (!round) return
-    
+
     const winner = round.winner()
     if (winner !== null && winner !== undefined) {
       handleRoundEnd()
@@ -434,59 +408,29 @@ export const useGameStore = defineStore('game', () => {
   }
 
   // Bot turn
-  function botTurn() {
-    console.log('[botTurn] Called - currentPlayer:', currentPlayer.value?.name, 'isHumanTurn:', isHumanTurn.value)
-    
-    if (!currentPlayer.value || isHumanTurn.value) {
-      console.log('[botTurn] Skipping - no current player or is human turn')
-      return
-    }
-    
-    const botName = currentPlayer.value.name
-    if (botThinking.value[botName]) {
-      console.log('[botTurn] Bot already thinking:', botName)
-      return
-    }
-    
-    const round = currentRound.value
-    if (!round) {
-      console.log('[botTurn] No current round')
-      return
-    }
+  function botTurn(): void {
+    if (!currentPlayer.value || isHumanTurn.value) return
 
-    const worker = botWorkers.value[botName]
-    if (!worker) {
-      console.error('[botTurn] No worker found for bot:', botName, 'Available workers:', Object.keys(botWorkers.value))
-      return
-    }
-    
-    console.log('[botTurn] Sending game state to bot:', botName)
-    botThinking.value[botName] = true
-    
+    const botName = currentPlayer.value.name
+    if (isBotThinking(botName)) return
+
+    const round = currentRound.value
+    if (!round) return
+
     const hand = round.playerHand(currentPlayerIndex.value)
-    const serializeCard = (card) => card ? JSON.parse(JSON.stringify(card)) : null
-    
-    const otherPlayers = players.value
-      .filter((_, idx) => idx !== currentPlayerIndex.value)
-      .map((player, idx) => ({
+    const otherPlayers: OtherPlayerInfo[] = players.value
+      .filter((_: PlayerInfo, idx: number) => idx !== currentPlayerIndex.value)
+      .map((player: PlayerInfo) => ({
         name: player.name,
         cardCount: player.hand.length,
-        hasCalledUno: hasCalledUno.value[idx] || false
+        hasCalledUno: player.hasCalledUno
       }))
-    
-    worker.postMessage({
-      type: 'YOUR_TURN',
-      gameState: {
-        hand: hand.map(serializeCard),
-        topCard: serializeCard(topCard.value),
-        currentColor: currentColor.value,
-        otherPlayers: otherPlayers
-      }
-    })
+
+    requestBotAction(botName, hand, topCard.value, currentColor.value, otherPlayers)
   }
 
   // Reset game
-  function resetGame() {
+  function resetGame(): void {
     game.value = null
     gameStarted.value = false
     roundOver.value = false
@@ -494,49 +438,35 @@ export const useGameStore = defineStore('game', () => {
     hasCalledUno.value = {}
     canCallUno.value = {}
     gameLog.value = []
-    
+
     // Terminate bot workers
-    Object.values(botWorkers.value).forEach(worker => worker.terminate())
-    botWorkers.value = {}
+    terminateAllBots()
   }
 
   // Check if card can be played (accepts card object or card index)
-  function canPlayCard(cardOrIndex) {
+  function canPlayCard(cardOrIndex: Card | number): boolean {
     const round = currentRound.value
     if (!round) return false
-    
+
     const pIdx = currentPlayerIndex.value
     if (pIdx !== round.playerInTurn()) return false
-    
-    let cardIndex = cardOrIndex
+
+    let cardIndex = cardOrIndex as number
     if (typeof cardOrIndex === 'object' && cardOrIndex !== null) {
       const hand = round.playerHand(pIdx)
-      cardIndex = hand.findIndex(c => 
-        c.type === cardOrIndex.type && 
-        c.color === cardOrIndex.color && 
-        (c.type !== 'NUMBERED' || c.number === cardOrIndex.number)
+      cardIndex = hand.findIndex((c: Card) =>
+        c.type === cardOrIndex.type &&
+        (c as any).color === (cardOrIndex as any).color &&
+        (c.type !== 'NUMBERED' || (c as any).number === (cardOrIndex as any).number)
       )
       if (cardIndex === -1) return false
     }
-    
+
     return round.canPlay(cardIndex)
   }
 
-  // Helper to format card for display
-  function formatCard(card) {
-    if (!card) return '?'
-    if (card.type === 'NUMBERED') {
-      return `${card.color} ${card.number}`
-    }
-    // Wild cards don't have a color property
-    if (card.type === 'WILD' || card.type === 'WILD DRAW') {
-      return card.type
-    }
-    return `${card.color} ${card.type}`
-  }
-
   // Helper to add to game log
-  function addToLog(message) {
+  function addToLog(message: string): void {
     gameLog.value.push(message)
   }
 
@@ -564,7 +494,7 @@ export const useGameStore = defineStore('game', () => {
     gameLog,
     hasCalledUno,
     canCallUno,
-    
+
     // Actions
     setupGame,
     playCard,
