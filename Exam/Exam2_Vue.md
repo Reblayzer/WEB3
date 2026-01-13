@@ -462,21 +462,31 @@ const { playCard, drawCard } = store;
 client/src/
 ├── components/          # Reusable UI components
 │   ├── UnoCard.vue     # Single card display (props: card, playable)
-│   ├── PlayerHand.vue  # Hand of cards (uses scoped slots)
+│   ├── PlayerHand.vue  # Hand of cards (emits play-card event)
 │   ├── ColorChooser.vue # Wild card color picker (emits color choice)
-│   └── GameBoard.vue   # Main game area layout
+│   └── GameBoard.vue   # Main game area (draw pile + top card)
 │
 ├── views/              # Route-level components
-│   ├── GameSetup.vue   # Initial setup: player names, start game
+│   ├── GameSetup.vue   # Initial setup: player name, bot count, start game
 │   ├── GamePlay.vue    # Main game view: hands, board, actions
-│   └── GameOver.vue    # End screen: scores, winner
+│   └── GameOver.vue    # End screen: scores, winner, play again
 │
-├── stores/             # Pinia state management
-│   ├── game.js         # Game state, actions (playCard, drawCard, sayUno)
-│   └── player.js       # Player-specific state
+├── stores/             # Pinia state management (TypeScript)
+│   ├── game.ts         # Game state, actions (playCard, drawCard, callUno)
+│   └── player.ts       # Player name state
+│
+├── composables/        # Reusable composition functions
+│   ├── useBotWorkers.ts # Bot worker lifecycle management
+│   └── useGamePlay.ts  # Game play logic (handlers, computed, watchers)
+│
+├── utils/              # Shared utility functions
+│   └── cardUtils.ts    # isWildCard(), formatCard()
+│
+├── workers/            # Web Workers
+│   └── bot.worker.ts   # Bot AI logic (runs in separate thread)
 │
 ├── router/
-│   └── index.js        # Route config + guards
+│   └── index.ts        # Route config + navigation guards
 │
 └── App.vue             # Root component with <router-view>
 ```
@@ -490,91 +500,291 @@ App.vue
   └─ <router-view>  (renders one of:)
       │
       ├─ GameSetup.vue
-      │   ├─ v-model for player input
+      │   ├─ v-model with computed getter/setter (MVVM pattern)
+      │   ├─ Pinia: playerStore.setPlayerName()
+      │   ├─ Pinia: gameStore.setupGame(numBots)
       │   └─ router.push('/play') on start
       │
-      ├─ GamePlay.vue  (uses Pinia store)
-      │   ├─ PlayerHand (scoped slot)
+      ├─ GamePlay.vue  (uses useGamePlay composable)
+      │   ├─ Composable: useGamePlay()
+      │   │   ├─ Computed: isGameReady, playableCards, canSayUno, canCatchUnoFailure
+      │   │   ├─ Handlers: handleDrawCard, handlePlayCard, handleColorChosen
+      │   │   └─ Watchers: gameState → router.push('/gameover')
+      │   ├─ PlayerHand
       │   │   └─ UnoCard[] (props + emits)
-      │   ├─ GameBoard
-      │   │   └─ UnoCard (top card)
-      │   └─ ColorChooser (v-if wild played)
-      │       └─ emits color → store action
+      │   ├─ GameBoard (emits draw-card)
+      │   │   └─ UnoCard (top card, non-playable)
+      │   └─ ColorChooser (v-show when wild played)
+      │       └─ emits color → handleColorChosen
       │
       └─ GameOver.vue
-          └─ Displays scores from Pinia
+          ├─ Computed: winner, sortedPlayers (from Pinia)
+          ├─ Actions: playAgain(), backToLobby()
+          └─ v-show for game log modal
 ```
 
 **Data Flow Example:**
 
 1. User clicks card in `UnoCard` → emits `'click'`
-2. Parent `PlayerHand` passes to `GamePlay`
-3. `GamePlay` calls `gameStore.playCard(index)`
-4. Store updates `game` state
-5. All components reactively update (hands, top card, turn indicator)
+2. Parent `PlayerHand` emits `'play-card'` with card index
+3. `GamePlay` composable's `handlePlayCard(index)` is called
+4. If wild card → shows ColorChooser (v-show), else calls `gameStore.playCard(index)`
+5. Store updates `game` state (domain model)
+6. All components reactively update (hands, top card, turn indicator)
+7. Store triggers bot workers via `useBotWorkers` composable
 
 ---
 
 ## Key Implementation Patterns
 
-### 1. **Reactive Game State** (GamePlay.vue)
+### 1. **Composable Pattern** (useGamePlay.ts)
 
-```js
-const gameStore = useGameStore();
-const { game, currentPlayerIndex, topCard } = storeToRefs(gameStore);
+**Separation of Concerns:** Logic extracted from large view component into reusable composable
 
-const isMyTurn = computed(() => currentPlayerIndex.value === playerIndex.value);
+```ts
+// useGamePlay.ts
+export function useGamePlay() {
+  const router = useRouter();
+  const gameStore = useGameStore();
 
-const playableCards = computed(() =>
-  hand.value.filter((card) => gameStore.canPlayCard(card))
-);
-```
+  // Local UI state
+  const showColorChooser = ref(false);
+  const unoCaught = ref(false);
 
-### 2. **Component Communication** (Props + Emits)
+  // Computed state
+  const isGameReady = computed(
+    () =>
+      gameStore.gameState === "IN_PROGRESS" &&
+      gameStore.players.length > 0 &&
+      gameStore.players[0] !== undefined &&
+      gameStore.topCard !== null
+  );
 
-```html
-<!-- GamePlay.vue -->
-<PlayerHand :cards="hand">
-  <template #default="{ card, index, playable }">
-    <UnoCard
-      :card="card"
-      :playable="playable"
-      @click="handleCardClick(index)"
-    />
-  </template>
-</PlayerHand>
-```
+  const playableCards = computed(() => {
+    if (!isGameReady.value) return [];
+    const hand = gameStore.players[0].hand;
+    return hand.map((card, index) => ({
+      ...card,
+      index,
+      playable: gameStore.canPlayCard(card),
+    }));
+  });
 
-### 3. **Conditional Rendering** (ColorChooser)
-
-```html
-<ColorChooser v-if="showColorChooser" @choose-color="handleColorChoice" />
-```
-
-### 4. **Route Guards** (router/index.js)
-
-```js
-{
-  path: '/play',
-  component: GamePlay,
-  beforeEnter: (to, from) => {
-    const store = useGameStore()
-    if (!store.game) return '/'  // Prevent access without initialized game
+  // Event handlers
+  function handlePlayCard(cardIndex: number) {
+    const card = gameStore.players[0].hand[cardIndex];
+    if (isWildCard(card)) {
+      showColorChooser.value = true;
+      return;
+    }
+    gameStore.playCard(cardIndex);
   }
+
+  // Watchers for navigation
+  watch(
+    () => gameStore.gameState,
+    (newState) => {
+      if (newState === "FINISHED") {
+        setTimeout(() => router.push("/gameover"), 1500);
+      }
+    },
+    { immediate: true }
+  );
+
+  return {
+    showColorChooser,
+    isGameReady,
+    playableCards,
+    handlePlayCard,
+    // ... other exports
+  };
 }
 ```
 
-### 5. **Side Effects** (Watchers for Navigation)
+**Usage in GamePlay.vue:**
 
-```js
-watch(
-  () => game.value?.gameState,
-  (state) => {
-    if (state === "FINISHED") {
-      router.push("/gameover");
-    }
+```ts
+const {
+  showColorChooser,
+  isGameReady,
+  playableCards,
+  handlePlayCard,
+  handleDrawCard,
+  handleColorChosen,
+} = useGamePlay();
+```
+
+### 2. **Bot Worker Management** (useBotWorkers.ts)
+
+**Web Workers:** Run bot AI in separate thread to avoid blocking UI
+
+```ts
+export function useBotWorkers() {
+  const workers = new Map<string, Worker>();
+
+  function initializeBot(
+    botName: string,
+    onAction: (botName: string, action: BotAction) => void
+  ) {
+    const worker = new Worker(
+      new URL("../workers/bot.worker.ts", import.meta.url),
+      { type: "module" }
+    );
+
+    worker.onmessage = (e) => onAction(botName, e.data);
+    workers.set(botName, worker);
   }
-);
+
+  function requestBotAction(botName: string, gameState: GameState) {
+    const worker = workers.get(botName);
+    worker?.postMessage({ type: "YOUR_TURN", gameState });
+  }
+
+  function terminateAllBots() {
+    workers.forEach((worker) => worker.terminate());
+    workers.clear();
+  }
+
+  return { initializeBot, requestBotAction, terminateAllBots };
+}
+```
+
+### 3. **Reactive Game State with Domain Model** (game.ts store)
+
+**Integration:** Pinia store wraps immutable domain model with Vue reactivity
+
+```ts
+export const useGameStore = defineStore("game", () => {
+  // Import domain model
+  const game: Ref<Game | null> = ref(null);
+
+  // Computed delegating to domain
+  const currentRound: ComputedRef<Round | null> = computed(() => {
+    roundKey.value; // Force reactivity
+    return game.value?.currentRound() ?? null;
+  });
+
+  const topCard = computed(() => {
+    if (!currentRound.value) return null;
+    const pile = currentRound.value.discardPile();
+    return pile[pile.length - 1];
+  });
+
+  // Actions wrapping domain methods
+  function playCard(cardIndex: number, chosenColor: Color | null = null) {
+    const round = currentRound.value;
+    if (!round) return;
+
+    if (isWildCard(card) && chosenColor) {
+      round.play(cardIndex, chosenColor);
+    } else {
+      round.play(cardIndex);
+    }
+
+    nextTurn();
+  }
+
+  return { game, currentRound, topCard, playCard, drawCard, callUno };
+});
+```
+
+### 4. **Component Communication** (Props + Emits)
+
+```html
+<!-- GamePlay.vue -->
+<PlayerHand
+  :cards="gameStore.players[0].hand"
+  :playableCards="playableCards"
+  @play-card="handlePlayCard"
+/>
+
+<!-- PlayerHand.vue -->
+<UnoCard
+  v-for="(cardData, index) in playableCards"
+  :key="index"
+  :card="cardData"
+  :playable="cardData.playable"
+  @click="handleCardClick(index)"
+/>
+```
+
+### 5. **Performance: v-show vs v-if**
+
+**Frequently toggled elements use v-show:**
+
+```html
+<!-- ColorChooser modal -->
+<ColorChooser v-show="showColorChooser" @choose-color="handleColorChosen" />
+
+<!-- Player hand (toggles every turn) -->
+<div v-show="gameStore.currentPlayerIndex === 0" class="player-hand-section">
+  <PlayerHand ... />
+</div>
+
+<!-- Bot indicator (toggles every turn) -->
+<div v-show="gameStore.currentPlayerIndex !== 0" class="bot-turn-indicator">
+  ...
+</div>
+```
+
+**Rarely rendered elements use v-if:**
+
+```html
+<!-- Card types (never change) -->
+<div v-if="card.type === 'NUMBERED'">{{ card.number }}</div>
+<div v-else-if="card.type === 'SKIP'">🚫</div>
+<div v-else-if="card.type === 'WILD'">🌈</div>
+```
+
+### 6. **Route Guards** (router/index.ts)
+
+**Navigation guards at router level (not component level):**
+
+```ts
+const routes = [
+  { path: "/", name: "home", component: GameSetup },
+  {
+    path: "/play",
+    name: "play",
+    component: GamePlay,
+    beforeEnter: (to, from) => {
+      const gameStore = useGameStore();
+      if (!gameStore.game) {
+        return "/"; // Redirect if no game initialized
+      }
+    },
+  },
+  {
+    path: "/gameover",
+    name: "gameover",
+    component: GameOver,
+    beforeEnter: (to, from) => {
+      const gameStore = useGameStore();
+      if (gameStore.gameState !== "FINISHED") {
+        return "/";
+      }
+    },
+  },
+];
+```
+
+### 7. **Shared Utilities** (cardUtils.ts)
+
+**Eliminate code duplication:**
+
+```ts
+import type { Card } from "domain/model/types/card-types";
+
+export function isWildCard(card: Card): boolean {
+  return card.type === "WILD" || card.type === "WILD DRAW";
+}
+
+export function formatCard(card: Card): string {
+  if (isWildCard(card)) {
+    return `${card.type}`;
+  }
+  return `${card.color} ${card.type === "NUMBERED" ? card.number : card.type}`;
+}
 ```
 
 ---
@@ -584,48 +794,92 @@ watch(
 **Startup Flow:**
 
 1. `App.vue` loads → `<router-view>` shows `GameSetup`
-2. User enters names → `v-model` binds to local `ref`
-3. Click "Start" → `gameStore.initGame(players)` → `router.push('/play')`
-4. Router guard checks game exists → allows navigation
-5. `GamePlay.vue` mounts → `onMounted` initializes subscriptions
+2. User enters name, selects bot count → `v-model` with computed setter (MVVM)
+3. Click "Start" → `playerStore.setPlayerName()` → `gameStore.setupGame(numBots)` → `router.push('/play')`
+4. Router `beforeEnter` guard checks game exists → allows navigation
+5. `GamePlay.vue` mounts → `useGamePlay()` composable initializes
+6. Store initializes bot workers via `useBotWorkers()` composable
 
 **Game Flow:**
 
-1. `GamePlay` computes `isMyTurn` and `playableCards` from store state
-2. Cards with `playable=true` show visual indicator (`:class`)
-3. User clicks card → emit bubbles up → Pinia action called
-4. Store updates `game.currentRound` → reactivity triggers
-5. All `computed` properties recalculate → UI updates
+1. `useGamePlay` composable computes `playableCards` from store state
+2. Cards with `playable=true` show visual indicator (`:class="{ playable }"`)
+3. User clicks card → `UnoCard` emits → `PlayerHand` emits → `handlePlayCard(index)`
+4. If wild card → `showColorChooser.value = true` (v-show toggles modal)
+5. User chooses color → `handleColorChosen(color)` → `gameStore.playCard(index, color)`
+6. Store updates domain model → reactivity triggers → all `computed` recalculate
+7. If not human turn → `gameStore.botTurn()` → `requestBotAction()` sends message to worker
+8. Worker responds → callback plays card → cycle repeats
+
+**State Management Pattern:**
+
+- **Local UI State** (ref in composable): `showColorChooser`, `unoCaught`
+- **Derived State** (computed): `playableCards`, `isGameReady`, `canSayUno`
+- **Global State** (Pinia): Game model, players, scores
+- **Side Effects** (watch): Navigation on game finish
 
 **Cleanup:**
 
-1. Navigate away → `onUnmounted` runs cleanup
-2. New route renders → previous component destroyed
+1. Navigate away → `onUnmounted` runs in components
+2. Store's `resetGame()` → `terminateAllBots()` cleans up workers
+3. New route renders → previous component destroyed
 
 ---
 
 ## 🎯 Exam Strategy: 7-Minute Demo Path
 
-If showing code, open these two files:
+If showing code, open these files to demonstrate concepts:
 
-**1. UnoCard.vue** - Shows:
+**1. UnoCard.vue** (136 lines) - Shows:
 
-- Props (`card`, `playable`)
+- Props (`card`, `playable`) with TypeScript types
 - Emits (`'click'`)
-- Computed (`colorClass`)
-- Dynamic `:class` binding
-- Conditional rendering (`v-if`/`v-else-if`)
+- Computed (`colorClass` derived from card data)
+- Dynamic `:class` binding with array + object syntax
+- Conditional rendering (`v-if`/`v-else-if` for card types)
+- MVVM: Model (props) → ViewModel (computed) → View (template)
 
-**2. GamePlay.vue** - Shows:
+**2. useGamePlay.ts** (130 lines) - Shows:
 
-- `ref`/`reactive` local state
-- Pinia store usage with `storeToRefs`
-- `computed` (derived values)
-- `watch` (side effects)
-- `onMounted`/`onUnmounted` lifecycle
-- Router navigation
+- **Composable pattern:** Reusable logic extraction (SOLID: Single Responsibility)
+- `ref` for local UI state (`showColorChooser`, `unoCaught`)
+- `computed` for derived values (`playableCards`, `canSayUno`)
+- `watch` for side effects (navigation on game finish)
+- Event handlers that coordinate with store
+- TypeScript types (`Color`, `PendingWildCard`)
 
-This covers all 9 concepts in ~7 minutes.
+**3. GamePlay.vue** (343 lines) - Shows:
+
+- Using composables (`useGamePlay`, `useGameStore`)
+- Template data binding (`:cards`, `@play-card`)
+- `v-show` vs `v-if` (ColorChooser modal uses v-show)
+- Component communication (props down, emits up)
+- Dynamic classes for current player indicator
+
+**4. router/index.ts** - Shows:
+
+- Route configuration
+- **Navigation guards** (`beforeEnter`) at router level
+- Guards check store state before allowing navigation
+- Programmatic navigation (`router.push`)
+
+**Alternative: game.ts store** (428 lines) - Shows:
+
+- Pinia store structure (`defineStore` with setup syntax)
+- `ref` for primitive state
+- `computed` delegating to domain model
+- Actions modifying state
+- Integration with composables (`useBotWorkers`)
+
+**Demo Flow (7 minutes):**
+
+1. Show `UnoCard.vue` → Props, emits, computed, v-if (2 min)
+2. Show `useGamePlay.ts` → Composable pattern, ref, computed, watch (2 min)
+3. Show `GamePlay.vue` → Template binding, component usage (1.5 min)
+4. Show `router/index.ts` → Guards enforcing valid state (1 min)
+5. Quick mention: `game.ts` wraps domain model, `useBotWorkers` manages threads (0.5 min)
+
+This covers all 9 concepts efficiently.
 
 ---
 
@@ -653,24 +907,32 @@ This covers all 9 concepts in ~7 minutes.
 
 **Q: "Walk through the data flow when a card is played"**
 
-A: User clicks → `UnoCard` emits `'click'` → `GamePlay` catches event → Calls `gameStore.playCard(index)` → Store updates `game` state → Vue's reactivity detects change → All dependent `computed` recalculate → UI updates (hands, top card, turn)
+A: User clicks → `UnoCard` emits `'click'` → `PlayerHand` emits `'play-card'` with index → `GamePlay` calls composable's `handlePlayCard(index)` → If wild card, shows ColorChooser (v-show), otherwise calls `gameStore.playCard(index)` → Store calls domain model's `round.play(cardIndex)` → Domain returns new immutable round → Store updates reactive `game` ref → Vue's reactivity detects change → All dependent `computed` recalculate (`playableCards`, `topCard`, `currentPlayerIndex`) → UI updates automatically
 
 **Q: "Why use Pinia instead of just props?"**
 
-A: Multiple components across different routes need game state. Pinia provides centralized store accessible anywhere, avoiding prop drilling through 5+ component levels. Also integrates with DevTools for debugging.
+A: Game state needed across 3 routes (GameSetup, GamePlay, GameOver) and multiple components at different nesting levels. Pinia provides centralized store accessible anywhere, avoiding prop drilling through 5+ component levels. Also integrates with DevTools for debugging state changes.
 
 **Q: "What's the difference between ref and reactive?"**
 
-A: `ref` wraps primitives in a reactive box (needs `.value` in script, auto-unwraps in template). `reactive` makes object properties reactive (no `.value`). Use `ref` for primitives, `reactive` for grouped state.
+A: `ref` wraps any value (especially primitives) in a reactive box—needs `.value` in script, auto-unwraps in template. `reactive` makes object properties reactive directly (no `.value`). Use `ref` for primitives and when you need to reassign entire objects. Use `reactive` for grouped state you'll mutate properties of.
 
 **Q: "Show me MVVM in your code"**
 
-A: [Open ColorChooser.vue]
+A: [Open UnoCard.vue]
 
-- **Model:** `const shaking = ref(false)` - the data
-- **View:** `<div :class="{ shake: shaking }">` - the template
-- **ViewModel:** `handleOverlayClick()` - the logic
-- **Binding:** `:class` automatically syncs Model ↔ View
+- **Model:** `const props = defineProps({ card, playable })` - the data
+- **View:** `<div :class="colorClass">{{ card.number }}</div>` - the template
+- **ViewModel:** `const colorClass = computed(() => ...)` - the logic
+- **Binding:** `:class` automatically syncs Model ↔ View, no manual DOM updates
+
+**Q: "Why use composables instead of keeping logic in components?"**
+
+A: **Single Responsibility Principle** - `GamePlay.vue` was 463 lines doing too much. Extracted game logic to `useGamePlay.ts` (130 lines), reduced component to 343 lines focused on presentation. Composables make logic reusable, testable, and easier to maintain. Similar to React hooks pattern.
+
+**Q: "What's the purpose of navigation guards?"**
+
+A: Enforce valid application states before route transitions. Example: `/play` guard checks `gameStore.game` exists, redirects to `/` if not—prevents accessing game view without initialized game. Guards run at router level (not component level) for centralized validation.
 
 ---
 
