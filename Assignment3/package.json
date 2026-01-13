@@ -6,5 +6,14 @@
     "client",
     "server",
     "domain"
-  ]
+  ],
+  "scripts": {
+    "dev": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "dev:server": "npm run dev -w server",
+    "build": "npm run build -w domain && npm run build -w server && npm run build -w client",
+    "build:client": "npm run build -w client",
+    "build:server": "npm run build -w server",
+    "build:domain": "npm run build -w domain"
+  }
 }

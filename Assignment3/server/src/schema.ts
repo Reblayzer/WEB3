@@ -19,6 +19,12 @@ export const typeDefs = `#graphql
     IN_PROGRESS
     FINISHED
   }
+
+  type GameLogEntry {
+    type: String!
+    message: String!
+    timestamp: String!
+  }
   
   type Game {
     id: ID!
@@ -35,6 +41,7 @@ export const typeDefs = `#graphql
     maxPlayers: Int!
     unoWindowOpen: Boolean!
     unoTarget: Int
+    gameLog: [GameLogEntry!]!
   }
   
   type AvailableGame {

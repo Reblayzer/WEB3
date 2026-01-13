@@ -1,10 +1,12 @@
 // Game interface and implementation
 
-import type { GameConfig, GameMemento } from './types/game-types'
-import { createRound, createRoundFromMemento, type Round } from './round'
+import type { GameConfig, GameMemento } from './types/game-types.js'
+import type { Shuffler, Card } from './types/card-types.js'
+import type { EndEvent } from './types/round-types.js'
+import { createRound, createRoundFromMemento, type Round } from './round.js'
 
 // Re-export for backwards compatibility
-export type { GameMemento } from './types/game-types'
+export type { GameMemento } from './types/game-types.js'
 
 // Constants
 const MIN_PLAYERS = 2
@@ -33,6 +35,7 @@ class GameImpl implements Game {
   private roundInst: Round | undefined
   private theWinner: number | undefined
   private cardsPerPlayer?: number
+  private shuffler?: Shuffler<Card>
   private randomizer?: (bound: number) => number
 
   constructor(cfg: GameConfig)
@@ -45,10 +48,10 @@ class GameImpl implements Game {
       if (m.players.length < MIN_PLAYERS) throw new Error(`Need at least ${MIN_PLAYERS} players`)
       if (m.targetScore <= 0) throw new Error('Target score must be positive')
       if (m.scores.length !== m.players.length) throw new Error('Scores count must match players count')
-      if (m.scores.some(score => score < 0)) throw new Error('Scores cannot be negative')
+      if (m.scores.some((score: number) => score < 0)) throw new Error('Scores cannot be negative')
 
       // Check for multiple winners
-      const winners = m.scores.filter(score => score >= m.targetScore).length
+      const winners = m.scores.filter((score: number) => score >= m.targetScore).length
       if (winners > 1) throw new Error('Multiple winners not allowed')
 
       // Check game state consistency
@@ -81,6 +84,7 @@ class GameImpl implements Game {
       this.target = cfg.targetScore ?? DEFAULT_TARGET_SCORE
       this.scores = new Array(this.players.length).fill(0)
       this.cardsPerPlayer = cfg.cardsPerPlayer
+      this.shuffler = cfg.shuffler
       this.randomizer = cfg.randomizer
 
       // Start the first round
@@ -91,7 +95,7 @@ class GameImpl implements Game {
   private setupRoundEndListener(): void {
     if (!this.roundInst) return
 
-    this.roundInst.onEnd((event) => {
+    this.roundInst.onEnd((event: EndEvent) => {
       if (!this.roundInst) return  // Guard against undefined
 
       const score = this.roundInst.score()
@@ -114,7 +118,8 @@ class GameImpl implements Game {
     this.roundInst = createRound({
       players: [...this.players],
       dealer,
-      cardsPerPlayer: this.cardsPerPlayer
+      cardsPerPlayer: this.cardsPerPlayer,
+      shuffler: this.shuffler
     })
     this.setupRoundEndListener()
   }

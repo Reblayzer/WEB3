@@ -187,6 +187,7 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useNetworkGameStore } from "../stores/networkGame";
 import { usePlayerStore } from "../stores/player";
+import { useGameSubscription } from "../composables/useGameSubscription";
 import UnoCard from "../components/UnoCard.vue";
 import ColorChooser from "../components/ColorChooser.vue";
 
@@ -194,6 +195,7 @@ const route = useRoute();
 const router = useRouter();
 const gameStore = useNetworkGameStore();
 const playerStore = usePlayerStore();
+const gameSubscription = useGameSubscription();
 
 const loading = ref(true);
 const error = ref(null);
@@ -262,6 +264,8 @@ onMounted(async () => {
 
   try {
     await gameStore.loadGame(gameId);
+    // Subscribe to real-time game updates
+    gameSubscription.subscribeToGame(gameId);
   } catch (err) {
     console.error("Error loading game:", err);
     error.value = err.message || "Game not found or not started";
@@ -271,8 +275,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  // Keep the subscription active but don't clear game state
-  // gameStore.clearGame()
+  // Unsubscribe from game updates
+  gameSubscription.unsubscribeFromGame();
 });
 
 function isCardPlayable(card) {
@@ -354,9 +358,27 @@ async function handleDrawCard() {
 
 async function handleCallUno() {
   try {
-    await gameStore.callUno();
+    // Optimistic update: immediately mark player as having called UNO
+    const player = gameStore.players.find(p => p.name === playerStore.playerName)
+    if (player) {
+      player.hasCalledUno = true  // Button disappears, badge appears immediately
+    }
+    
+    // Confirm with server
+    const success = await gameStore.callUno()
+    if (!success) {
+      // Revert if server rejected
+      if (player) {
+        player.hasCalledUno = false
+      }
+    }
   } catch (err) {
-    console.error("Error calling UNO:", err);
+    console.error("Error calling UNO:", err)
+    // Revert optimistic update on error
+    const player = gameStore.players.find(p => p.name === playerStore.playerName)
+    if (player) {
+      player.hasCalledUno = false
+    }
   }
 }
 
@@ -393,9 +415,21 @@ async function handleStartGame() {
   }
 }
 
-function goToLobby() {
-  gameStore.clearGame();
-  router.push("/lobby");
+async function goToLobby() {
+  try {
+    // Only call leaveGame if in WAITING status (haven't started yet)
+    if (gameStore.status === 'WAITING' && gameStore.gameId) {
+      await gameStore.leaveGame();
+    }
+  } catch (err) {
+    console.error("Error leaving game:", err);
+    // Still navigate back even if leave fails
+  } finally {
+    gameStore.clearGame();
+    // Clear playerId when leaving game - it's game-specific
+    playerStore.playerId = '';
+    router.push("/lobby");
+  }
 }
 
 function getColorHex(color) {
@@ -409,29 +443,18 @@ function getColorHex(color) {
 }
 
 function formatLogEntry(entry) {
-  if (entry.type === "LOG") {
-    return entry.data.message;
+  // Handle undefined or missing entries
+  if (!entry) {
+    return "Unknown event";
   }
 
-  const data =
-    typeof entry.data === "string" ? JSON.parse(entry.data) : entry.data;
-
-  switch (entry.type) {
-    case "PLAYER_JOINED":
-      return `${data.playerName} joined the game`;
-    case "GAME_STARTED":
-      return "Game started!";
-    case "CARD_PLAYED":
-      return `${data.playerName} played a card`;
-    case "CARD_DRAWN":
-      return `${data.playerName} drew a card`;
-    case "UNO_CALLED":
-      return `${data.playerName} called UNO!`;
-    case "ROUND_ENDED":
-      return `${data.winnerName} won the round!`;
-    default:
-      return `${entry.type}`;
+  // Server provides formatted messages - use them directly
+  if (entry.message) {
+    return entry.message;
   }
+
+  // Fallback for legacy entries
+  return entry.type || "Unknown event";
 }
 </script>
 
@@ -758,7 +781,7 @@ function formatLogEntry(entry) {
   background: white;
   padding: 15px;
   border-radius: 10px;
-  max-height: 200px;
+  max-height: 400px;
   overflow-y: auto;
 }
 

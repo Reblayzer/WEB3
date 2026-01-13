@@ -67,6 +67,7 @@
 import { ref, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { usePlayerStore } from "../stores/player";
+import { useNetworkGameStore } from "../stores/networkGame";
 import {
   getAvailableGames,
   createGame,
@@ -76,6 +77,7 @@ import {
 
 const router = useRouter();
 const playerStore = usePlayerStore();
+const gameStore = useNetworkGameStore();
 
 const maxPlayers = ref(4);
 const availableGames = ref([]);
@@ -120,10 +122,10 @@ async function handleCreateGame() {
     if (player) {
       playerStore.setPlayerId(player.id);
     }
-    // Navigate to the game after a short delay to ensure state is updated
-    setTimeout(() => {
-      router.push(`/game/${game.id}`);
-    }, 100);
+    // Load game state before navigating (for guard validation)
+    await gameStore.loadGame(game.id);
+    // Navigate to the game
+    router.push(`/game/${game.id}`);
   } catch (error) {
     console.error("Error creating game:", error);
     alert(error.message || "Failed to create game. Please try again.");
@@ -140,10 +142,10 @@ async function handleJoinGame(gameId) {
     if (player) {
       playerStore.setPlayerId(player.id);
     }
-    // Navigate to the game after a short delay to ensure state is updated
-    setTimeout(() => {
-      router.push(`/game/${game.id}`);
-    }, 100);
+    // Load game state before navigating (for guard validation)
+    await gameStore.loadGame(game.id);
+    // Navigate to the game
+    router.push(`/game/${game.id}`);
   } catch (error) {
     console.error("Error joining game:", error);
     alert(

@@ -1,7 +1,7 @@
 // Type definitions for UNO Game Server
 
-import type { Game } from 'domain/src/model/game';
-import type { Card } from 'domain/src/model/types/card-types';
+import type { Game } from '../../domain/src/model/game.js';
+import type { Card } from '../../domain/src/model/types/card-types.js';
 
 export type GameStatus = 'WAITING' | 'IN_PROGRESS' | 'FINISHED';
 
@@ -11,6 +11,13 @@ export interface Player {
   cardCount: number;
   hasCalledUno: boolean;
   score: number;
+}
+
+export interface GameLogEntry {
+  type: string;
+  message: string;
+  timestamp: string;
+  data?: any;
 }
 
 export interface GameState {
@@ -24,6 +31,7 @@ export interface GameState {
   maxPlayers: number;
   winner: string | null;
   createdAt: Date;
+  gameLog: GameLogEntry[];
 }
 
 export interface SerializedGame {
@@ -41,6 +49,7 @@ export interface SerializedGame {
   maxPlayers: number;
   unoWindowOpen: boolean;
   unoTarget: number | null;
+  gameLog: GameLogEntry[];
 }
 
 export interface AvailableGame {

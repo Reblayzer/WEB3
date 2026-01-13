@@ -8,7 +8,7 @@ import type {
   Numbered,
   NumberedCard,
   WildFamily
-} from './types/card-types'
+} from './types/card-types.js'
 
 export const isNumberedCard = (c: Card): c is NumberedCard => c.type === 'NUMBERED'
 export const isActionCard = (c: Card): c is ActionCard =>

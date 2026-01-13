@@ -1,71 +1,162 @@
-# Exam 3: GraphQL
+# Assignment 3: GraphQL & Server-Client Communication - Exam Guide
 
-> **Exam Topics:** GraphQL types and queries, resolvers, GraphQL client, web sockets, server-sent events, GraphQL subscriptions
+> **Core Goal:** Design a typed API and communicate efficiently between client and server.
 
 ---
 
-## 1. GraphQL Types and Queries
+## Key Idea
 
-### What is GraphQL?
-GraphQL is a query language for APIs that gives clients the power to request exactly the data they need. Unlike REST, where each endpoint returns a fixed structure, GraphQL has a single endpoint where clients specify the shape of the response. This solves the problems of over-fetching (getting more data than needed) and under-fetching (needing multiple requests to get all data).
+**GraphQL lets the client request exactly the data it needs, while the server enforces a typed contract. The server validates every input at runtime, and real-time features use WebSocket subscriptions to push updates efficiently.**
 
-### Schema Definition Language (SDL)
-The schema defines all the types and operations available in your API. It's like a contract between client and server. The server implements the schema, and clients query against it. GraphQL is strongly typed - every field has a defined type.
+---
+
+# Part 1: Theory & Concepts
+
+## 1. Same-Origin Policy and CORS
+
+### What is Same-Origin Policy?
+
+Same-Origin Policy is a security restriction: a web page can only make requests to the same origin (protocol + domain + port). This prevents malicious scripts from stealing data.
+
+```
+https://game.com → Can access https://game.com/api ✅
+https://game.com → Cannot access https://attacker.com ❌
+https://game.com:3000 → Cannot access https://game.com:4000 ❌ (different port)
+```
+
+### What is CORS?
+
+Cross-Origin Resource Sharing (CORS) relaxes Same-Origin Policy in a controlled way. The server tells the browser which origins are allowed to access it by sending headers.
+
+```
+Client (http://localhost:3000)
+    ↓ Browser blocks request (different origin)
+Server (http://localhost:4000)
+    ↑ Server responds with:
+      Access-Control-Allow-Origin: http://localhost:3000
+    Browser allows request ✅
+```
+
+### CORS Headers
+
+```ts
+// Server must send these headers for cross-origin requests
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  next();
+});
+```
+
+### GraphQL + CORS
+
+GraphQL typically uses a single POST endpoint, so CORS configuration is straightforward. Apollo Server handles this automatically with proper setup.
+
+```ts
+const server = new ApolloServer({
+  typeDefs,
+  resolvers,
+  cors: {
+    origin: ["http://localhost:3000"],
+    credentials: true,
+  },
+});
+```
+
+**🎯 Exam Tip:** Same-Origin Policy protects users; CORS allows controlled access.
+
+---
+
+## 2. GraphQL Schema - Types & Operations
+
+### What is GraphQL Schema?
+
+The schema is a contract between client and server. It defines all available data types and operations. GraphQL enforces the schema at runtime — if a client requests a field that doesn't exist, it's rejected immediately.
+
+```
+Client requests shape of data
+          ↓
+Server validates against schema
+          ↓
+Server executes resolvers matching schema
+          ↓
+Response matches client's shape
+```
 
 ### Scalar Types
-Scalars are the basic primitive types. They represent leaf values in your data - they don't have sub-fields.
+
+Scalars are primitive leaf values:
 
 ```graphql
-String    # Text
-Int       # Whole number
-Float     # Decimal number
-Boolean   # true/false
-ID        # Unique identifier (serialized as String)
+String      # Text
+Int         # Whole number
+Float       # Decimal
+Boolean     # true/false
+ID          # Unique identifier (serialized as String)
+DateTime    # ISO 8601 timestamp
 ```
 
 ### Object Types
-Object types define the structure of your data. Each field has a name and type. The `!` means non-nullable (required), and `[]` means an array.
+
+Objects define structure with fields and types. The `!` means non-nullable (required), `[]` means array:
 
 ```graphql
 type Card {
-  type: CardType!     # Required field
-  color: Color        # Optional field (can be null)
-  number: Int
+  type: CardType! # Required enum
+  color: String # Optional string
+  number: Int # Optional int
 }
 
 type Game {
+  id: ID! # Required ID
+  players: [Player!]! # Required array of required Players
+  round: Round # Optional object
+}
+
+type Player {
   id: ID!
-  players: [Player!]!  # Required array of required Players
+  name: String!
+  hand: [Card!]! # Required array of required Cards
+  score: Int!
 }
 ```
 
-### Query, Mutation, and Subscription
-These are the three operation types in GraphQL. Query reads data, Mutation writes data, and Subscription streams real-time updates. They're defined just like object types but have special meaning.
+### Query, Mutation, Subscription Types
+
+These are the three operation types in GraphQL:
 
 ```graphql
+# Query - READ data (no side effects)
 type Query {
-  game(id: ID!): Game          # Read a game
-  games: [Game!]!              # Read all games
+  game(id: ID!): Game # Read one game
+  games: [Game!]! # Read all games
+  playerHand(gameId: ID!): [Card!]!
 }
 
+# Mutation - WRITE data (has side effects)
 type Mutation {
-  playCard(gameId: ID!, cardIndex: Int!): Game!   # Write operation
-  createGame(players: [String!]!): Game!
+  createGame(input: CreateGameInput!): Game!
+  playCard(gameId: ID!, cardIndex: Int!): Game!
+  drawCard(gameId: ID!): Game!
 }
 
+# Subscription - STREAM real-time updates
 type Subscription {
-  gameUpdated(gameId: ID!): Game!   # Real-time stream
+  gameUpdated(gameId: ID!): Game! # Notified when game changes
+  gamesListUpdated: [AvailableGame!]! # Notified when game list changes
 }
 ```
 
 ### Input Types
-Input types define complex parameters for mutations. Unlike object types, input types can only be used as arguments, not returned. They help organize mutation parameters.
+
+Input types define complex mutation parameters. They can only be used as arguments, not returned:
 
 ```graphql
 input CreateGameInput {
-  players: [String!]!
-  maxPlayers: Int
-  isPrivate: Boolean
+  players: [String!]! # Required array of player names
+  maxPlayers: Int # Optional max player count
+  isPrivate: Boolean # Optional private flag
 }
 
 type Mutation {
@@ -73,389 +164,870 @@ type Mutation {
 }
 ```
 
-### Interfaces and Unions
-Interfaces define shared fields that multiple types must implement. Unions group types that don't share fields. Both require a `__resolveType` resolver to determine the concrete type.
+### Enums
+
+Enums restrict values to specific options:
 
 ```graphql
-# Interface - shared fields
-interface Card {
-  id: ID!
-  type: String!
+enum CardType {
+  NUMBERED
+  SKIP
+  REVERSE
+  DRAW
+  WILD
+  WILD_DRAW
 }
 
-type NumberedCard implements Card {
-  id: ID!
-  type: String!
-  color: String!
-  number: Int!
+enum Color {
+  RED
+  YELLOW
+  GREEN
+  BLUE
 }
 
-# Union - no shared fields required
-union GameEvent = CardPlayed | PlayerJoined | GameEnded
+type Card {
+  type: CardType!
+  color: Color
+}
 ```
+
+**🎯 Exam Tip:** The schema is your API contract. Every field is typed and validated. The `!` means "required."
 
 ---
 
-## 2. Resolvers
+## 3. Resolvers - Mapping Schema to Logic
 
-### What are they?
-Resolvers are the functions that actually fetch or compute data for each field in your schema. When a client makes a query, GraphQL calls the appropriate resolvers to build the response. Every field can have a resolver, though simple fields often use a default resolver that just returns the property with the same name.
+### What are Resolvers?
 
-### Resolver Parameters
-Every resolver receives four parameters. You don't always need all of them, so unused ones are often written as `_`.
+Resolvers are functions that execute when a field is requested. They fetch data, compute values, or trigger side effects. Every field in your schema can have a resolver.
 
-```ts
-resolver(parent, args, context, info)
+```
+Client query requests "game" field
+          ↓
+GraphQL finds Query.game resolver
+          ↓
+Resolver function executes: (parent, args, context, info) => { ... }
+          ↓
+Returns data or error
+          ↓
+Response sent to client
 ```
 
-- **parent**: The result from the parent field's resolver. For root fields, this is undefined.
-- **args**: The arguments passed to this field in the query.
-- **context**: Shared data available to all resolvers, like database connections or the current user.
-- **info**: Metadata about the query structure. Rarely used.
+### Resolver Parameters
 
-### Query Resolvers
-Query resolvers fetch data. They're the entry points for read operations. Each field in your Query type needs a resolver.
+Every resolver receives four parameters (though you don't always need all):
+
+```ts
+resolver(parent, args, context, info);
+```
+
+- **parent**: The result from the parent field's resolver. For root Query fields, this is undefined/null
+- **args**: Arguments passed to this field (from client query)
+- **context**: Shared data across all resolvers (database connection, current user, request)
+- **info**: Metadata about the query (rarely used)
+
+### Query Resolvers - Reading Data
+
+Query resolvers are entry points for read operations. They don't modify state:
 
 ```ts
 const resolvers = {
   Query: {
-    game: (_, { id }) => gameManager.getGame(id),
+    // Query: game(id: ID!): Game
+    game: (_, { id }, { gameManager }) => {
+      return gameManager.getGame(id);
+    },
 
-    games: (_, __, { user }) => {
-      if (!user) throw new Error('Unauthorized')
-      return gameManager.getAllGames()
+    // Query: availableGames: [AvailableGame!]!
+    availableGames: (_, __, { gameManager }) => {
+      return gameManager.getAvailableGames();
+    },
+
+    // Query: playerHand(gameId: ID!): [Card!]!
+    playerHand: (_, { gameId }, { gameManager, playerId }) => {
+      const game = gameManager.getGame(gameId);
+      const player = game.players.find((p) => p.id === playerId);
+      return player?.hand || [];
+    },
+  },
+};
+```
+
+**Breakdown:**
+
+- First param `_`: Unused parent (null for Query root fields)
+- Second param `{ id }`: Destructure arguments from client query
+- Third param `{ gameManager }`: Get services from context
+- Return: The data matching the schema type
+
+### Mutation Resolvers - Writing Data
+
+Mutation resolvers modify state and usually publish events for subscriptions:
+
+```ts
+Mutation: {
+  // Mutation: playCard(gameId: ID!, cardIndex: Int!): Game!
+  playCard: (_, { gameId, cardIndex }, { gameManager, playerId, pubsub }) => {
+    // Modify state
+    const game = gameManager.playCard(gameId, playerId, cardIndex);
+
+    // Publish event for subscribers
+    pubsub.publish(`GAME_${gameId}`, { gameUpdated: game });
+
+    // Return updated data
+    return game;
+  },
+
+  // Mutation: drawCard(gameId: ID!): Game!
+  drawCard: (_, { gameId }, { gameManager, playerId, pubsub }) => {
+    const game = gameManager.drawCard(gameId, playerId);
+    pubsub.publish(`GAME_${gameId}`, { gameUpdated: game });
+    return game;
+  }
+}
+```
+
+### Subscription Resolvers - Streaming Updates
+
+Subscription resolvers don't return data directly. They return an async iterator that yields updates over time:
+
+```ts
+Subscription: {
+  // Subscription: gameUpdated(gameId: ID!): Game!
+  gameUpdated: {
+    subscribe: (_, { gameId }, { pubsub }) => {
+      // Return iterator that yields updates from this channel
+      return pubsub.asyncIterator(`GAME_${gameId}`);
+    }
+  },
+
+  // Subscription: gamesListUpdated: [AvailableGame!]!
+  gamesListUpdated: {
+    subscribe: (_, __, { pubsub }) => {
+      return pubsub.asyncIterator('GAMES_LIST');
     }
   }
 }
 ```
 
-### Mutation Resolvers
-Mutation resolvers modify data and often trigger side effects like publishing events for subscriptions. They should return the updated data.
+### Field Resolvers - Nested Data
 
-```ts
-Mutation: {
-  playCard: (_, { gameId, cardIndex }, { pubsub }) => {
-    const game = gameManager.playCard(gameId, cardIndex)
-    pubsub.publish(`GAME_${gameId}`, { gameUpdated: game })  // Notify subscribers
-    return game
-  }
-}
-```
-
-### Subscription Resolvers
-Subscription resolvers don't return data directly. Instead, they return an async iterator that yields values over time. The `pubsub.asyncIterator` creates this iterator for a given channel.
-
-```ts
-Subscription: {
-  gameUpdated: {
-    subscribe: (_, { gameId }, { pubsub }) =>
-      pubsub.asyncIterator(`GAME_${gameId}`)
-  }
-}
-```
-
-### Field Resolvers
-Field resolvers handle nested data. When a type has a field that needs computation or fetching, you define a resolver for that specific field. The `parent` parameter contains the parent object's data.
+When a type has a field needing computation, you define a resolver for that field. The `parent` parameter contains the parent object:
 
 ```ts
 const resolvers = {
   Game: {
-    // Resolver for the 'players' field on Game type
-    players: (parent) => {
-      return playerService.getPlayersByGameId(parent.id)
-    }
-  }
-}
+    // When client requests game.players, this resolver runs
+    players: (parent, _, { playerService }) => {
+      return playerService.getPlayersByGameId(parent.id);
+    },
+
+    // When client requests game.topCard, compute it
+    topCard: (parent) => {
+      const pile = parent.discardPile;
+      return pile[pile.length - 1];
+    },
+  },
+
+  Player: {
+    // When client requests player.score, compute from game
+    score: (parent, _, { gameManager }) => {
+      return gameManager.getPlayerScore(parent.id);
+    },
+  },
+};
 ```
 
-### Type Resolvers
-When using interfaces or unions, GraphQL needs to know which concrete type an object is. The `__resolveType` resolver examines the object and returns the type name as a string.
-
-```ts
-Card: {
-  __resolveType(card) {
-    if (card.number !== undefined) return 'NumberedCard'
-    if (card.action) return 'ActionCard'
-    return 'WildCard'
-  }
-}
-```
+**🎯 Exam Tip:** Resolvers are just functions mapping schema fields to data. Parent→Args→Context→Info.
 
 ---
 
-## 3. GraphQL Client (Apollo)
+## 4. GraphQL Clients - Apollo
 
-### What is it?
-Apollo Client is a library for making GraphQL requests from the browser. It handles sending queries and mutations, caching results, and managing subscriptions over WebSocket. It works with any GraphQL server.
+### What is Apollo Client?
 
-### Split Link Setup
-The client needs different connections for different operations. HTTP works for queries and mutations, but subscriptions need WebSocket for real-time streaming. The split link routes requests to the appropriate connection based on the operation type.
+Apollo Client is a library for consuming GraphQL APIs from the browser. It handles:
+
+- Sending queries and mutations via HTTP
+- Subscribing to real-time updates via WebSocket
+- Caching results to avoid refetching
+- Managing loading and error states
+
+### HTTP + WebSocket Setup (Split Link)
+
+GraphQL uses different protocols for different operation types:
+
+- **Queries & Mutations** → HTTP (stateless, faster)
+- **Subscriptions** → WebSocket (persistent, real-time)
 
 ```ts
-const httpLink = new HttpLink({ uri: 'http://localhost:4000/graphql' })
-const wsLink = new GraphQLWsLink(createClient({ url: 'ws://localhost:4000/graphql' }))
+import { HttpLink } from "@apollo/client/link/http";
+import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
+import { createClient } from "graphql-ws";
+import { split, getMainDefinition } from "@apollo/client/utilities";
 
+const httpLink = new HttpLink({
+  uri: "http://localhost:4000/graphql",
+  credentials: "include", // Send cookies
+});
+
+const wsLink = new GraphQLWsLink(
+  createClient({
+    url: "ws://localhost:4000/graphql",
+  })
+);
+
+// Route operations based on type
 const splitLink = split(
   ({ query }) => {
-    const def = getMainDefinition(query)
-    return def.kind === 'OperationDefinition' && def.operation === 'subscription'
+    const def = getMainDefinition(query);
+    return (
+      def.kind === "OperationDefinition" && def.operation === "subscription"
+    );
   },
-  wsLink,    // Subscriptions use WebSocket
-  httpLink   // Queries and mutations use HTTP
-)
+  wsLink, // Use WebSocket for subscriptions
+  httpLink // Use HTTP for queries/mutations
+);
 
-const client = new ApolloClient({ link: splitLink, cache: new InMemoryCache() })
+const client = new ApolloClient({
+  link: splitLink,
+  cache: new InMemoryCache(),
+});
 ```
 
 ### Making Queries
-Queries read data. You write the query using the `gql` tag, specify what fields you want, and pass any variables. The response contains only the fields you requested.
+
+Queries fetch data. You write the query, specify variables, and receive exactly what you requested:
 
 ```ts
-const { data } = await client.query({
-  query: gql`
+const { data, loading, error } = useQuery(
+  gql`
     query GetGame($id: ID!) {
       game(id: $id) {
         id
-        players { name score }
+        players {
+          name
+          score
+        }
+        topCard {
+          type
+          color
+          number
+        }
       }
     }
   `,
-  variables: { id: '123' }
-})
+  {
+    variables: { id: "123" },
+  }
+);
+
+// data.game.players is typed and cached
 ```
 
 ### Making Mutations
-Mutations modify data. They work like queries but use `client.mutate()`. You typically return the updated data so the cache stays current.
+
+Mutations write data and return the updated state:
 
 ```ts
-await client.mutate({
-  mutation: gql`
-    mutation PlayCard($gameId: ID!, $cardIndex: Int!) {
-      playCard(gameId: $gameId, cardIndex: $cardIndex) {
-        id
-        currentRound { playerInTurn }
+const [playCard] = useMutation(gql`
+  mutation PlayCard($gameId: ID!, $cardIndex: Int!) {
+    playCard(gameId: $gameId, cardIndex: $cardIndex) {
+      id
+      topCard {
+        type
+        color
+      }
+      players {
+        hand
       }
     }
-  `,
-  variables: { gameId: '123', cardIndex: 2 }
-})
+  }
+`);
+
+// Call mutation
+await playCard({
+  variables: { gameId: "123", cardIndex: 2 },
+});
 ```
 
 ### Subscribing to Updates
-Subscriptions give you a stream of updates. You subscribe and provide callbacks for each event. Don't forget to unsubscribe when you're done to avoid memory leaks.
+
+Subscriptions create a persistent connection that streams updates:
 
 ```ts
-const subscription = client.subscribe({
-  query: gql`
+const { data, loading } = useSubscription(
+  gql`
     subscription OnGameUpdate($gameId: ID!) {
-      gameUpdated(gameId: $gameId) { id players }
+      gameUpdated(gameId: $gameId) {
+        id
+        topCard {
+          type
+        }
+        players {
+          name
+        }
+      }
     }
   `,
-  variables: { gameId: '123' }
-}).subscribe({
-  next: ({ data }) => console.log('Update:', data),
-  error: (err) => console.error(err)
-})
+  {
+    variables: { gameId: "123" },
+  }
+);
 
-// Later: subscription.unsubscribe()
+// data updates in real-time as server publishes events
 ```
+
+**🎯 Exam Tip:** Apollo Client handles all transport concerns. You write GraphQL, it routes to right transport.
 
 ---
 
-## 4. WebSockets
+## 5. WebSockets vs Server-Sent Events (SSE)
 
-### What are they?
-WebSocket is a protocol for persistent, bidirectional communication between client and server. Unlike HTTP where the client must initiate every request, WebSocket keeps a connection open so either side can send messages at any time. This makes it ideal for real-time features.
+### What are WebSockets?
 
-### HTTP vs WebSocket
-HTTP is request-response: client asks, server answers, connection closes. WebSocket establishes a connection that stays open. The server can push data to the client without the client asking. This is essential for live updates, chat, and multiplayer games.
-
-| HTTP | WebSocket |
-|------|-----------|
-| Client initiates | Either side can send |
-| New connection per request | Persistent connection |
-| Stateless | Stateful |
-| Higher overhead | Lower overhead |
-
-### WebSocket Lifecycle
-The connection goes through several states: connecting, open, and closed. Once open, both sides can send messages freely until one side closes the connection.
+WebSocket is a bidirectional protocol for persistent connections. Once established, either side can send messages without waiting for a request:
 
 ```
-1. Client initiates connection
-2. Server accepts (handshake)
-3. Connection is open - messages flow both ways
-4. Either side closes connection
+Client initiates WebSocket upgrade
+          ↓
+Server accepts → Connection open
+          ↓
+Messages flow both ways until someone closes
 ```
 
----
+### What is SSE?
 
-## 5. Server-Sent Events (SSE)
+Server-Sent Events provides one-way streaming over HTTP. The client opens a connection, and the server pushes events:
 
-### What are they?
-Server-Sent Events provide one-way streaming from server to client over HTTP. The client opens a connection, and the server pushes events through it. Unlike WebSocket, SSE is simpler and uses standard HTTP, but only supports server-to-client messages.
+```
+Client opens EventSource
+          ↓
+Server sends events down HTTP stream
+          ↓
+Only server can send, client receives
+```
 
-### SSE vs WebSocket
-SSE is simpler to implement and works over regular HTTP, making it easier to use with existing infrastructure. It has built-in reconnection if the connection drops. However, it's one-way only - the client can't send messages back through the same connection.
+### Comparison
 
-| SSE | WebSocket |
-|-----|-----------|
-| Server to client only | Bidirectional |
-| Uses HTTP | Custom protocol |
-| Auto-reconnect | Manual reconnect |
-| Simpler setup | More complex |
+| Feature         | WebSocket               | SSE                       |
+| --------------- | ----------------------- | ------------------------- |
+| Direction       | Bidirectional           | Server→Client only        |
+| Protocol        | Custom (ws://)          | HTTP                      |
+| Overhead        | Lower (persistent)      | Higher (HTTP headers)     |
+| Reconnection    | Manual                  | Automatic                 |
+| Browser Support | All modern              | All modern                |
+| Use Case        | Chat, multiplayer games | Notifications, live feeds |
 
 ### When to Use Each
-Use SSE for notifications, live feeds, or any scenario where the server pushes updates but doesn't need responses through the same channel. Use WebSocket when you need true bidirectional communication, like chat or real-time games.
 
-```ts
-// Server sends events
-app.get('/events', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`)
-})
+**Use WebSocket when:**
 
-// Client receives events
-const events = new EventSource('/events')
-events.onmessage = (e) => console.log(JSON.parse(e.data))
-```
+- Client and server both send messages (chat, multiplayer games)
+- You need low latency bidirectional communication
+- Real-time features are core to the app
+
+**Use SSE when:**
+
+- Server pushes updates, client just listens (notifications)
+- You already have HTTP infrastructure
+- You want built-in reconnection
+
+**GraphQL Subscriptions typically use WebSocket** because GraphQL needs to handle client requests (re-subscribe, unsubscribe) dynamically.
+
+**🎯 Exam Tip:** WebSocket = bidirectional (games), SSE = server-push only (notifications).
 
 ---
 
-## 6. GraphQL Subscriptions
+## 6. GraphQL Subscriptions & Pub/Sub Pattern
 
-### What are they?
-GraphQL subscriptions enable real-time updates through the GraphQL API. When a client subscribes, they receive updates whenever the data they're watching changes. Under the hood, this typically uses WebSocket, but the GraphQL layer provides a consistent API.
+### How GraphQL Subscriptions Work
 
-### How They Work
-Subscriptions use the publish-subscribe (PubSub) pattern. When data changes (usually in a mutation), the server publishes an event to a channel. All clients subscribed to that channel receive the update.
+Subscriptions enable real-time updates through GraphQL. Internally they use the Pub/Sub pattern:
 
 ```
 1. Client sends subscription query (via WebSocket)
 2. Server registers client with PubSub for that channel
-3. Some mutation changes data
-4. Mutation publishes event to PubSub
-5. PubSub broadcasts to all subscribers
-6. Each client receives the update
+3. Client now receives updates whenever that channel publishes
+4. Some mutation changes data and publishes event
+5. PubSub broadcasts event to all subscribed clients
+6. Each client receives update in real-time
 ```
 
 ### PubSub Implementation
-PubSub manages channels and subscribers. The mutation publishes events, and the subscription resolver creates an iterator that yields events from the channel.
+
+PubSub manages channels and subscribers. Every mutation that modifies watched data publishes an event:
 
 ```ts
-const pubsub = new PubSub()
+import { PubSub } from "graphql-subscriptions";
+
+const pubsub = new PubSub();
 
 // Mutation publishes when data changes
-Mutation: {
-  playCard: (_, args, { pubsub }) => {
-    const result = gameManager.playCard(args)
-    pubsub.publish(`GAME_${args.gameId}`, { gameUpdated: result.game })
-    return result
-  }
-}
+const resolvers = {
+  Mutation: {
+    playCard: (_, { gameId, cardIndex }, { gameManager, pubsub }) => {
+      const game = gameManager.playCard(gameId, cardIndex);
 
-// Subscription subscribes to the channel
-Subscription: {
-  gameUpdated: {
-    subscribe: (_, { gameId }, { pubsub }) =>
-      pubsub.asyncIterator(`GAME_${gameId}`)
-  }
-}
+      // Publish event to channel
+      pubsub.publish(`GAME_${gameId}`, {
+        gameUpdated: game, // Event payload
+      });
+
+      return game;
+    },
+  },
+
+  Subscription: {
+    // Subscription subscribes to the channel
+    gameUpdated: {
+      subscribe: (_, { gameId }, { pubsub }) => {
+        // asyncIterator creates an iterator that yields events from this channel
+        return pubsub.asyncIterator(`GAME_${gameId}`);
+      },
+    },
+  },
+};
 ```
 
-### Filtering
-Sometimes you want to filter which events reach which subscribers. The `withFilter` helper lets you add a predicate that determines if an event should be sent to a particular subscriber.
+**Flow Example:**
+
+```
+Player 1 plays card → playCard mutation executes
+                   → pubsub.publish('GAME_123', { gameUpdated: {...} })
+                   → All subscribed clients receive update in real-time
+Player 2's UI updates automatically
+Player 3's UI updates automatically
+```
+
+### Filtering Subscriptions
+
+Sometimes you only want certain events. Use `withFilter` to add conditions:
 
 ```ts
-subscribe: withFilter(
-  () => pubsub.asyncIterator('GAME_EVENTS'),
-  (payload, variables) => payload.gameId === variables.gameId  // Only matching games
-)
+import { withFilter } from "graphql-subscriptions";
+
+Subscription: {
+  gameUpdated: {
+    subscribe: withFilter(
+      () => pubsub.asyncIterator("GAME_EVENTS"),
+      (payload, variables) => {
+        // Only send to subscribers watching this game
+        return payload.gameUpdated.id === variables.gameId;
+      }
+    );
+  }
+}
 ```
+
+**🎯 Exam Tip:** Pub/Sub pattern: mutations publish events, subscriptions listen. WebSocket carries the stream.
 
 ---
 
-## 7. Data Validation with Zod
+## 7. Runtime Validation - Why TypeScript Isn't Enough
 
-### What is it?
-Zod is a runtime validation library. TypeScript types disappear at runtime, so you can't trust data from users or external APIs. Zod validates data at runtime and can generate TypeScript types from validators.
+### The Problem
 
-### Why use it?
-User input and API responses can be anything at runtime. Zod ensures data matches expected shapes before your code uses it, preventing runtime errors.
+TypeScript types exist only during development. At runtime, they're compiled away. When external data arrives (user input, API response), you can't trust it matches the expected shape.
 
 ```ts
-import { z } from 'zod'
-
-// Define a schema
-const CardSchema = z.object({
-  type: z.enum(['NUMBERED', 'WILD', 'ACTION']),
-  color: z.string().optional(),
-  number: z.number().min(0).max(9).optional()
-})
-
-// Infer TypeScript type from schema
-type Card = z.infer<typeof CardSchema>
-
-// Validate data
-const result = CardSchema.safeParse(userInput)
-if (result.success) {
-  const card = result.data  // Typed as Card
-} else {
-  console.error(result.error)
+// TypeScript (compile time)
+interface Card {
+  type: "NUMBERED" | "WILD";
+  color: "RED" | "BLUE";
+  number?: number;
 }
+
+const card: Card = JSON.parse(userInput); // ❌ Trust but don't verify!
+// At runtime, userInput could be anything
+```
+
+**Scenario: What if server receives:**
+
+```json
+{ "type": "INVALID_TYPE", "color": 123 }
+ // Wrong types!
+```
+
+TypeScript doesn't catch this because the code compiled fine. At runtime, you're working with garbage data.
+
+### Why Validation Matters
+
+GraphQL validates at runtime, but only the GraphQL schema. For complex validation (string length, enum values, nested objects), you need a separate validator:
+
+```ts
+// GraphQL schema says: playCard(cardIndex: Int!): Game!
+// That only checks: cardIndex is provided and is a number
+// It doesn't check: is cardIndex >= 0? Is it < 13?
+```
+
+### Validation Layer
+
+Add runtime validation to resolvers:
+
+```ts
+const resolvers = {
+  Mutation: {
+    playCard: (_, { gameId, cardIndex }, { gameManager, pubsub }) => {
+      // Validate before using
+      if (!gameId) throw new Error("Game ID required");
+      if (!Number.isInteger(cardIndex) || cardIndex < 0) {
+        throw new Error("Invalid card index");
+      }
+
+      // Now safe to use
+      const game = gameManager.playCard(gameId, cardIndex);
+      pubsub.publish(`GAME_${gameId}`, { gameUpdated: game });
+      return game;
+    },
+  },
+};
+```
+
+**🎯 Exam Tip:** TypeScript types are compile-time only. Use runtime validators for external data.
+
+---
+
+## 8. Zod - Runtime Validation
+
+### What is Zod?
+
+Zod is a TypeScript-first validation library. You define a schema, Zod validates data at runtime, and automatically generates TypeScript types:
+
+```ts
+import { z } from "zod";
+
+// Define validation schema
+const CardSchema = z.object({
+  type: z.enum(["NUMBERED", "SKIP", "WILD"]),
+  color: z.string().optional(),
+  number: z.number().int().min(0).max(9).optional(),
+});
+
+// Infer TypeScript type from schema (automatically!)
+type Card = z.infer<typeof CardSchema>;
 ```
 
 ### Common Zod Methods
+
 ```ts
-z.string()                    // String type
-z.number()                    // Number type
-z.boolean()                   // Boolean type
-z.array(z.string())          // Array of strings
-z.object({ name: z.string() }) // Object shape
-z.enum(['A', 'B', 'C'])       // Enum values
-z.literal('specific')         // Exact value
-.optional()                   // Makes field optional
-.nullable()                   // Allows null
-z.coerce.number()             // Convert string to number
+z.string(); // String type
+z.number(); // Number type
+z.boolean(); // Boolean type
+z.array(z.string()); // Array of strings
+z.object({ name: z.string() }); // Object shape
+z.enum(["A", "B", "C"]); // Enum values
+z.literal("exact"); // Exact value
+z.union([z.string(), z.number()]) // Union type
+
+  // Modifiers
+  .optional() // Field can be undefined
+  .nullable() // Field can be null
+  .default(value) // Default value
+  .refine(predicate); // Custom validation
+z.coerce.number(); // Convert string to number
 ```
+
+### Validating in Resolvers
+
+Validate mutation input before using:
+
+```ts
+const CreateGameInputSchema = z.object({
+  players: z.array(z.string().min(1)).min(2),
+  maxPlayers: z.number().int().min(2).max(10).optional(),
+});
+
+const resolvers = {
+  Mutation: {
+    createGame: (_, { input }, { gameManager, pubsub }) => {
+      // Validate input
+      const validated = CreateGameInputSchema.parse(input);
+      // If invalid, throws ZodError automatically
+
+      // Safe to use
+      const game = gameManager.createGame(
+        validated.players,
+        validated.maxPlayers
+      );
+
+      pubsub.publish("GAMES_LIST", {
+        gamesListUpdated: gameManager.getAvailableGames(),
+      });
+      return game;
+    },
+  },
+};
+```
+
+### Error Handling
+
+```ts
+const result = CreateGameInputSchema.safeParse(input);
+
+if (!result.success) {
+  // result.error has detailed validation errors
+  console.error("Validation failed:", result.error.flatten());
+} else {
+  // result.data is typed and validated
+  const game = gameManager.createGame(result.data.players);
+}
+```
+
+**🎯 Exam Tip:** Zod validates at runtime AND generates types. One definition = validation + TypeScript.
 
 ---
 
 ## Quick Answers
 
-| Question | Answer |
-|----------|--------|
-| What is a resolver? | A function that returns data for a field. Parameters: parent, args, context, info |
-| Query vs Mutation vs Subscription? | Query reads data, Mutation writes data, Subscription streams real-time updates |
-| How do subscriptions work? | PubSub pattern over WebSocket - mutations publish events, subscriptions listen for them |
-| WebSocket vs SSE? | WebSocket is bidirectional and more complex; SSE is server-to-client only but simpler |
-| What does the split link do? | Routes subscriptions to WebSocket and queries/mutations to HTTP |
-| Why GraphQL over REST? | Client specifies exactly what data it needs, single endpoint, strongly typed schema |
-| Input type vs Object type? | Input types are for mutation arguments only; object types are for return values |
-| What is __resolveType? | Resolver that tells GraphQL which concrete type an interface/union object is |
-| Why use Zod? | Runtime validation because TypeScript types don't exist at runtime |
+| Question                           | Answer                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| What is Same-Origin Policy?        | Security restriction: can only request same origin. CORS relaxes it with headers          |
+| What is GraphQL?                   | Query language for APIs. Client specifies exact data needed, server enforces typed schema |
+| What is a resolver?                | Function that executes for a field. Gets parent, args, context, info                      |
+| Query vs Mutation vs Subscription? | Query reads (no side effects), Mutation writes (side effects), Subscription streams       |
+| How do subscriptions work?         | Pub/Sub pattern: mutations publish events, clients subscribe to channels via WebSocket    |
+| WebSocket vs SSE?                  | WebSocket is bidirectional (games), SSE is server→client only (notifications)             |
+| Why validate at runtime?           | TypeScript is compile-time only. Runtime data can be anything.                            |
+| What does Zod do?                  | Runtime validation that also generates TypeScript types                                   |
+| Why split link?                    | Route subscriptions to WebSocket (persistent), queries to HTTP (stateless)                |
 
 ---
 
-## Where It's Applied in Assignment 3
+# Part 2: Server Implementation (High-Level)
 
-| Concept | File | Location |
-|---------|------|----------|
-| **Schema Types** | `server/src/schema.ts:3-59` | `Card`, `Player`, `Game`, `AvailableGame`, `PlayerHand`, `GameEvent` |
-| **Scalar Types** | `server/src/schema.ts` | String, Int, Boolean, ID throughout schema |
-| **`!` and `[]` syntax** | `server/src/schema.ts:25` | `players: [Player!]!` - required array of required Players |
-| **Query Type** | `server/src/schema.ts:61-65` | `game`, `availableGames`, `playerHand` queries |
-| **Mutation Type** | `server/src/schema.ts:67-76` | `createGame`, `joinGame`, `startGame`, `playCard`, `drawCard`, `sayUno`, etc. |
-| **Subscription Type** | `server/src/schema.ts:78-81` | `gameUpdated`, `gamesListUpdated` |
-| **Query Resolvers** | `server/src/resolvers.ts:7-18` | `game`, `availableGames`, `playerHand` resolver functions |
-| **Mutation Resolvers** | `server/src/resolvers.ts:22-57` | 8 mutation handlers calling GameManager |
-| **Subscription Resolvers** | `server/src/resolvers.ts:61-72` | `pubsub.asyncIterator(['GAME_${gameId}'])` |
-| **Resolver Args** | `server/src/resolvers.ts` | `(_: any, { id }, { gameId, playerId })` destructuring |
-| **Apollo Client** | `client/src/api/graphql.ts:35-38` | `new ApolloClient({ link: splitLink, cache })` |
-| **Split Link** | `client/src/api/graphql.ts:22-32` | Routes subscriptions to WebSocket, queries to HTTP |
-| **GraphQL Queries** | `client/src/api/graphql.ts:62-130` | `GetAvailableGames`, `GetGame`, `GetPlayerHand` with `gql` tag |
-| **GraphQL Mutations** | `client/src/api/graphql.ts:136-343` | `createGame`, `joinGame`, `playCard`, etc. with `client.mutate()` |
-| **Subscriptions** | `client/src/api/graphql.ts:348-400` | `subscribeToGameUpdates`, `subscribeToGamesListUpdates` |
-| **PubSub** | `server/src/gameManager.ts:8` | `export const pubsub = new PubSub()` |
-| **PubSub Publish** | `server/src/gameManager.ts:401-418` | `pubsub.publish('GAME_${gameId}', { gameUpdated: ... })` |
-| **WebSocket Server** | `server/src/server.ts:8-30` | `WebSocketServer` with `graphql-ws` |
-| **WebSocket Client** | `client/src/api/graphql.ts:10-14` | `GraphQLWsLink` connecting to `ws://localhost:4000/graphql` |
+## What the Server Does
+
+The server wraps the Assignment 1 domain model and exposes it via GraphQL API:
+
+1. **Schema**: Defines Card, Player, Game types and operations (Query/Mutation/Subscription)
+2. **Resolvers**: Functions that execute mutations (create game, play card, draw card) and publish events via PubSub
+3. **GameManager**: Manages in-memory games collection, calls domain logic
+4. **WebSocket**: Apollo Server with WebSocket support for real-time subscriptions
+
+## Key Flow: When a Card is Played
+
+```
+Client: PLAY_CARD mutation
+    ↓
+Server: Mutation resolver receives gameId, cardIndex
+    ↓
+GameManager.playCard() calls domain model
+    ↓
+pubsub.publish('GAME_123', { gameUpdated: game })
+    ↓
+All WebSocket subscribers of GAME_123 receive update
+```
+
+## Simple Example: PlayCard Resolver
+
+```ts
+Mutation: {
+  playCard: (_, { gameId, cardIndex }, { gameManager, pubsub }) => {
+    // 1. Call domain logic
+    const game = gameManager.playCard(gameId, cardIndex);
+
+    // 2. Publish event so subscribers see update in real-time
+    pubsub.publish(`GAME_${gameId}`, { gameUpdated: game });
+
+    // 3. Return updated game
+    return game;
+  };
+}
+```
+
+The mutation **publishes an event** so that all other players subscribed to `GAME_123` get the update instantly via WebSocket.
+
+---
+
+# Part 3: Client Implementation (High-Level)
+
+## What the Client Does
+
+The client is a Vue 3 app that connects to the GraphQL server via HTTP and WebSocket:
+
+1. **Login**: Enter player name
+2. **Lobby**: Create or join a multiplayer game (subscription updates game list in real-time)
+3. **GamePlayNetwork**: Play game with other players (subscription receives card plays in real-time)
+
+## Apollo Client Setup
+
+The client uses a **split link** to route operations:
+
+- **Queries & Mutations** → HTTP (request-response, stateless)
+- **Subscriptions** → WebSocket (persistent, real-time)
+
+```ts
+// HTTP for queries/mutations
+const httpLink = new HttpLink({ uri: "http://localhost:4000/graphql" });
+
+// WebSocket for subscriptions
+const wsLink = new GraphQLWsLink(
+  createClient({ url: "ws://localhost:4000/graphql" })
+);
+
+// Route based on operation type
+const splitLink = split(
+  ({ query }) => getMainDefinition(query).operation === "subscription",
+  wsLink, // subscriptions → WebSocket
+  httpLink // queries/mutations → HTTP
+);
+
+const client = new ApolloClient({
+  link: splitLink,
+  cache: new InMemoryCache(),
+});
+```
+
+## Real-Time Flow
+
+```
+Player 1: Click "Play Card 2"
+    ↓
+Client: client.mutate({ mutation: PLAY_CARD, variables: { gameId, cardIndex } })
+    ↓
+Server: Resolver executes, publishes event
+    ↓
+pubsub.publish('GAME_123', { gameUpdated: {...} })
+    ↓
+WebSocket sends to all subscribers (Player 2, 3, etc.)
+    ↓
+Player 2 & 3 receive subscription update
+    ↓
+Apollo cache updates, Vue reactivity triggers
+    ↓
+All players see card played in real-time
+```
+
+## Network Game Store (Pinia)
+
+Simple store that:
+
+1. Uses `client.mutate()` for mutations (create game, play card, etc.)
+2. Uses `client.subscribe()` to listen for game updates via WebSocket
+3. Automatically unsubscribes when component unmounts (prevents memory leaks)
+
+## Three Views
+
+| View                | Purpose                                                       |
+| ------------------- | ------------------------------------------------------------- |
+| Login.vue           | Enter player name → playerStore                               |
+| Lobby.vue           | List available games, create/join (subscription updates list) |
+| GamePlayNetwork.vue | Play game with others (subscription receives play updates)    |
+
+---
+
+## 🎯 Exam Strategy: 7-Minute Demo Path
+
+If showing code, open these files:
+
+**1. schema.ts** (50 lines) - Shows:
+
+- Object types (Card, Player, Game)
+- Enums (GameStatus)
+- Query, Mutation, Subscription definitions
+- Non-nullable `!` and array `[]` syntax
+
+**2. resolvers.ts** (60 lines) - Shows:
+
+- Query resolvers (game, availableGames, playerHand)
+- Mutation resolvers (playCard, startGame) with pubsub.publish()
+- Subscription resolvers with pubsub.asyncIterator()
+- Context usage (gameManager, pubsub)
+
+**3. graphql.ts** (client) (200 lines) - Shows:
+
+- Apollo Client setup with split link (HTTP + WebSocket)
+- GraphQL queries with `gql` tag and variables
+- GraphQL mutations returning updated data
+- GraphQL subscriptions with real-time updates
+
+**4. networkGame.ts** (client store) (100 lines) - Shows:
+
+- Pinia store for network state
+- client.mutate() for mutations
+- client.subscribe() with .subscribe() callbacks
+- Subscription lifecycle (cleanup)
+
+**Demo Flow (7 minutes):**
+
+1. Show `schema.ts` → Types, operations, non-nullable (2 min)
+2. Show `resolvers.ts` → Context, pubsub.publish/asyncIterator (2 min)
+3. Show `graphql.ts` → Split link, queries, mutations (2 min)
+4. Show `networkGame.ts` → Subscribe callbacks, unsubscribe cleanup (1 min)
+
+---
+
+## Quick Reference: Exam Trap Checklist
+
+✅ **Same-Origin Policy?** → Security restriction; CORS relaxes it with headers
+
+✅ **GraphQL vs REST?** → GraphQL: client specifies shape, single endpoint; REST: fixed shapes per endpoint
+
+✅ **`!` and `[]` in schema?** → `!` = required/non-null, `[]` = array, `[String!]!` = required array of required strings
+
+✅ **Resolver parameters?** → parent, args, context, info (don't always need all)
+
+✅ **pubsub.publish vs asyncIterator?** → publish() sends event, asyncIterator() receives events
+
+✅ **WebSocket vs HTTP?** → WebSocket: subscriptions (persistent), HTTP: queries/mutations (stateless)
+
+✅ **Split link purpose?** → Route subscriptions to WebSocket, queries to HTTP
+
+✅ **Why unsubscribe?** → Prevent memory leaks; listener receives updates even after component unmounts
+
+✅ **Zod validation?** → Validate mutation input at runtime before using
+
+✅ **Context in resolvers?** → Shared across all resolvers (gameManager, pubsub, userId)
+
+---
+
+## Common Exam Questions
+
+**Q: "Walk through real-time game update when a card is played"**
+
+A: Player 1 calls `playCard()` mutation → Client sends to server via HTTP → Server's `playCard` resolver calls `gameManager.playCard()` → Domain model updates → Resolver calls `pubsub.publish('GAME_123', { gameUpdated: game })` → Server sends event to all WebSocket subscribers → Player 2 and Player 3's subscriptions receive `gameUpdated` → Their Apollo cache updates → Vue reactivity triggers → UIs show new game state in real-time
+
+**Q: "Why use subscriptions instead of polling?"**
+
+A: Polling means client constantly asks "any updates?" → HTTP requests every 1-2 seconds → High bandwidth, high latency, high server load. Subscriptions mean server pushes updates → Only network traffic when data actually changes → Lower latency (instant vs 1-2 second delay) → Lower bandwidth → Lower server load.
+
+**Q: "What's the purpose of the split link?"**
+
+A: GraphQL supports three operation types (Query, Mutation, Subscription). Queries/Mutations are request-response (use HTTP), subscriptions are streaming (use WebSocket). Split link examines each operation, routes subscriptions to WebSocket, queries/mutations to HTTP. This gives you the best protocol for each use case.
+
+**Q: "How do you validate mutation input?"**
+
+A: Server-side, use Zod to validate before executing resolver logic. Example: `CreateGameInputSchema.parse(input)` throws error if invalid. This prevents bad data from entering gameManager. Client-side, Apollo validates against schema (field types, required fields) but not business logic (string length, number ranges, custom rules) — that's what Zod is for.
+
+**Q: "Why does resolver need context?"**
+
+A: Resolvers are just functions — they need access to shared services. Context passes gameManager, pubsub, userId, database connection, etc. to all resolvers. Without context, you'd have to pass these as parameters through every function, creating tight coupling.
+
+**Q: "What happens if subscription client doesn't unsubscribe?"**
+
+A: Memory leak. Subscription listener stays active even after component unmounts. When component remounts, new listener created. Original listener still listening. After 10 remounts, you have 10 listeners for same channel. All receive every update, wasting CPU and bandwidth. Always unsubscribe in `onUnmounted()`.
+
+---
+
+## Memory Aid: GraphQL Operation Types
+
+```
+Query       READ only        HTTP       No side effects
+Mutation    WRITE           HTTP       Has side effects, publishes events
+Subscription STREAM          WebSocket  Receives events in real-time
+```
+
+**Real-time flow:**
+
+```
+Mutation (Player A plays card)
+    ↓
+pubsub.publish('GAME_123', { gameUpdated: ... })
+    ↓
+WebSocket broadcasts to all subscribers
+    ↓
+Subscriptions (Player B & C watching GAME_123)
+    ↓
+Their UIs update automatically
+```

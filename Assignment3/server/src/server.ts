@@ -10,6 +10,7 @@ import { useServer } from 'graphql-ws/lib/use/ws';
 import cors from 'cors';
 import { typeDefs } from './schema.js';
 import { resolvers } from './resolvers.js';
+import { buildContext } from './context.js';
 
 const PORT = 4000;
 
@@ -61,7 +62,7 @@ app.use(
   }),
   express.json(),
   expressMiddleware(server, {
-    context: async ({ req }) => ({ req }),
+    context: buildContext,
   })
 );
 

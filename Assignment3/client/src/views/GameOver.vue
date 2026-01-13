@@ -64,7 +64,7 @@
         </button>
       </div>
 
-      <div v-if="showLog" class="game-log-modal">
+      <div v-show="showLog" class="game-log-modal">
         <div class="log-content">
           <h3>Complete Game Log</h3>
           <div class="log-entries">
@@ -268,12 +268,12 @@ const viewLog = () => {
 
 .score-item.winner {
   background: linear-gradient(135deg, #efefef 0%, #e5e5e5 100%);
-  border: 2px solid #ffd54f;
+  border: 2px solid #bfbfbf;
   font-weight: bold;
 }
 
 .score-item.human .score-player {
-  color: #1a1a1a;
+  color: #2f2f2f;
 }
 
 .score-rank {
@@ -289,7 +289,7 @@ const viewLog = () => {
 .score-points {
   font-size: 1.1em;
   font-weight: bold;
-  color: #2e2e2e;
+  color: #4CAF50;
 }
 
 .winner-badge {
@@ -348,7 +348,7 @@ const viewLog = () => {
 }
 
 .back-to-lobby-button {
-  background: linear-gradient(135deg, #1a1a1a 0%, #111111 100%);
+  background: linear-gradient(135deg, #2f2f2f 0%, #1c1c1c 100%);
   color: white;
 }
 
@@ -358,7 +358,7 @@ const viewLog = () => {
 }
 
 .play-again-button {
-  background: linear-gradient(135deg, #2e2e2e 0%, #1f1f1f 100%);
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
   color: white;
 }
 
@@ -415,7 +415,7 @@ const viewLog = () => {
   margin-bottom: 8px;
   background: #f5f5f5;
   border-radius: 4px;
-  border-left: 3px solid #1a1a1a;
+  border-left: 3px solid #2f2f2f;
   font-size: 0.9em;
 }
 
@@ -428,7 +428,7 @@ const viewLog = () => {
 .close-log-button {
   width: 100%;
   padding: 12px;
-  background: #1a1a1a;
+  background: #2f2f2f;
   color: white;
   border: none;
   border-radius: 6px;
@@ -439,7 +439,7 @@ const viewLog = () => {
 }
 
 .close-log-button:hover {
-  background: #111111;
+  background: #1c1c1c;
 }
 
 @media (max-width: 768px) {

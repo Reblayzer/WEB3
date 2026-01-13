@@ -1,12 +1,12 @@
 // Deck interface and implementation
 
-import type { Card, CardMemento, Color, Numbered, Shuffler } from './types/card-types'
-import { colors } from './types/card-types'
+import type { Card, CardMemento, Color, Numbered, Shuffler } from './types/card-types.js'
+import { colors } from './types/card-types.js'
 
 // Re-export commonly used types and constants for backwards compatibility
-export { colors } from './types/card-types'
-export type { Card } from './types/card-types'
-export { hasColor, hasNumber } from './card'
+export { colors } from './types/card-types.js'
+export type { Card } from './types/card-types.js'
+export { hasColor, hasNumber } from './card.js'
 
 // Constants for standard UNO deck composition
 const NUMBERED_ZERO_COUNT = 1

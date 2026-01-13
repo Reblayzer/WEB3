@@ -1,6 +1,6 @@
 // Round-related types - Single source of truth for round definitions
 
-import type { Card, Color, Shuffler, CardMemento } from './card-types'
+import type { Card, Color, Shuffler, CardMemento } from './card-types.js'
 
 export type Direction = 'clockwise' | 'counterclockwise'
 

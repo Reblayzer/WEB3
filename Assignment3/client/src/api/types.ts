@@ -13,6 +13,13 @@ export interface Player {
   score: number
 }
 
+export interface GameLogEntry {
+  type: string
+  message: string
+  timestamp: string
+  data?: any
+}
+
 export interface Game {
   id: string
   players: Player[]
@@ -28,6 +35,7 @@ export interface Game {
   maxPlayers: number
   unoWindowOpen: boolean
   unoTarget: number | null
+  gameLog: GameLogEntry[]
 }
 
 export interface AvailableGame {

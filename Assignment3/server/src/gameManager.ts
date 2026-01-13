@@ -1,8 +1,8 @@
 // Game Manager - Manages multiple game instances
 import { v4 as uuidv4 } from 'uuid';
-import { createGame } from 'domain/src/model/game';
+import { createGame } from '../../domain/src/model/game.js';
 import { PubSub } from 'graphql-subscriptions';
-import type { Card, Color } from 'domain/src/model/types/card-types';
+import type { Card, Color } from '../../domain/src/model/types/card-types.js';
 import type { GameState, SerializedGame, AvailableGame, PlayerHand, GameUpdateEvent } from './types.js';
 
 export const pubsub = new PubSub();
@@ -10,7 +10,6 @@ export const pubsub = new PubSub();
 // Store for active games
 const games = new Map<string, GameState>();
 const playerGames = new Map<string, string>(); // Map player IDs to game IDs
-const playerHands = new Map<string, Card[]>(); // Map player IDs to their hands
 
 // Fisher-Yates shuffle for card randomization
 const shuffler = <T>(array: T[]): void => {
@@ -41,7 +40,8 @@ export class GameManager {
       createdBy,
       maxPlayers,
       winner: null,
-      createdAt: new Date()
+      createdAt: new Date(),
+      gameLog: []
     };
 
     games.set(gameId, gameState);
@@ -393,12 +393,27 @@ export class GameManager {
       createdBy: game.createdBy,
       maxPlayers: game.maxPlayers,
       unoWindowOpen: round ? round.isUnoWindowOpen() : false,
-      unoTarget: round ? (round.getUnoTarget() ?? null) : null
+      unoTarget: round ? (round.getUnoTarget() ?? null) : null,
+      gameLog: game.gameLog
     };
   }
 
   // Notify game update via subscription
-  static notifyGameUpdate(gameId: string, eventType: string, data: any): void {
+  static notifyGameUpdate(gameId: string, eventType: string, data: unknown): void {
+    const game = games.get(gameId);
+    if (game) {
+      // Add event to game log
+      let message = this.formatEventMessage(eventType, data);
+      if (message) {
+        game.gameLog.push({
+          type: eventType,
+          message,
+          timestamp: new Date().toISOString(),
+          data
+        });
+      }
+    }
+
     pubsub.publish(`GAME_${gameId}`, {
       gameUpdated: {
         gameId,
@@ -407,6 +422,56 @@ export class GameManager {
         timestamp: new Date().toISOString()
       }
     });
+  }
+
+  // Format event data into human-readable message
+  private static formatEventMessage(eventType: string, data: any): string {
+    let dataObj: any = {};
+    if (data) {
+      if (typeof data === 'string') {
+        try {
+          dataObj = JSON.parse(data);
+        } catch {
+          dataObj = {};
+        }
+      } else {
+        dataObj = data;
+      }
+    }
+
+    switch (eventType) {
+      case 'CARD_PLAYED': {
+        const playerName = dataObj?.playerName || 'Someone';
+        const card = dataObj?.card;
+        let cardStr = 'a card';
+        if (card) {
+          console.log('Card object:', JSON.stringify(card)); // Debug
+          if (card.type === 'NUMBERED') {
+            cardStr = `${card.color} ${card.number}`;
+          } else if (card.type === 'WILD' || card.type === 'WILD DRAW') {
+            cardStr = card.type;
+          } else {
+            // SKIP, REVERSE, DRAW (action cards)
+            cardStr = `${card.color} ${card.type}`;
+          }
+        }
+        return `${playerName} played ${cardStr}`;
+      }
+      case 'CARD_DRAWN':
+        return `${dataObj?.playerName || 'Someone'} drew a card`;
+      case 'UNO_CALLED':
+        return `${dataObj?.playerName || 'Someone'} called UNO!`;
+      case 'PLAYER_JOINED':
+        return `${dataObj?.playerName || 'A player'} joined the game`;
+      case 'GAME_STARTED':
+        return 'Game started!';
+      case 'ROUND_ENDED':
+        return `${dataObj?.winnerName || 'Someone'} won the round!`;
+      case 'PLAYER_LEFT':
+        return 'A player left the game';
+      default:
+        return '';
+    }
   }
 
   // Notify games list update

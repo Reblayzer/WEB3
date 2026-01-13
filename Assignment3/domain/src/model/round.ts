@@ -1,13 +1,13 @@
 // Round interface and implementation
 
-import type { Card, Color, Shuffler, CardMemento } from './types/card-types'
-import type { Direction, RoundConfig, RoundMemento, EndListener } from './types/round-types'
-import { colors } from './types/card-types'
-import { createStandardDeck, deckFromMemento, type Deck } from './deck'
-import { isActionCard, isNumberedCard, isWildCard } from './card'
+import type { Card, Color, Shuffler, CardMemento } from './types/card-types.js'
+import type { Direction, RoundConfig, RoundMemento, EndListener, EndEvent } from './types/round-types.js'
+import { colors } from './types/card-types.js'
+import { createStandardDeck, deckFromMemento, type Deck } from './deck.js'
+import { isActionCard, isNumberedCard, isWildCard } from './card.js'
 
 // Re-export for backwards compatibility
-export type { RoundMemento } from './types/round-types'
+export type { RoundMemento } from './types/round-types.js'
 
 // Constants
 const DRAW_CARD_PENALTY = 2
@@ -36,6 +36,9 @@ export interface Round {
   draw(): void
   sayUno(player: number): void
   catchUnoFailure(args: { readonly accuser: number; readonly accused: number }): boolean
+  hasCalledUno(player: number): boolean
+  isUnoWindowOpen(): boolean
+  getUnoTarget(): number | undefined
   hasEnded(): boolean
   winner(): number | undefined
   score(): number | undefined
@@ -528,6 +531,19 @@ class RoundImpl implements Round {
 
   hasEnded(): boolean {
     return this.ended
+  }
+
+  hasCalledUno(player: number): boolean {
+    // Check both pre-announce (before playing) and post-play window scenarios
+    return this.preUno[player] || (this.unoOpen && this.unoTarget === player ? this.unoSaid : false)
+  }
+
+  isUnoWindowOpen(): boolean {
+    return this.unoOpen
+  }
+
+  getUnoTarget(): number | undefined {
+    return this.unoTarget
   }
 
   winner(): number | undefined {

@@ -35,6 +35,7 @@ function handleLogin() {
   const trimmedName = playerName.value.trim()
   if (trimmedName) {
     playerStore.setPlayerName(trimmedName)
+    // playerId will be generated when joining/creating a game
     router.push('/lobby')
   }
 }

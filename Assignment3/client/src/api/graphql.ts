@@ -1,10 +1,18 @@
 // GraphQL API for UNO multiplayer
 import { ApolloClient, InMemoryCache, gql, split, HttpLink, type DocumentNode } from '@apollo/client/core'
+import { setContext } from '@apollo/client/link/context'
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions'
 import { getMainDefinition } from '@apollo/client/utilities'
 import { createClient } from 'graphql-ws'
 import type { Game, AvailableGame, PlayerHand, GameUpdate } from './types'
 import type { Color } from 'domain/src/model/types/card-types'
+import { usePlayerStore } from '../stores/player'
+
+// Helper to get player ID from store
+function getPlayerId(): string | undefined {
+  const playerStore = usePlayerStore()
+  return playerStore.playerId
+}
 
 // WebSocket link for subscriptions
 const wsLink = new GraphQLWsLink(
@@ -18,6 +26,20 @@ const httpLink = new HttpLink({
   uri: 'http://localhost:4000/graphql',
 })
 
+// Auth link to dynamically add player ID header
+const authLink = setContext((_, { headers }) => {
+  const playerId = getPlayerId()
+  return {
+    headers: {
+      ...headers,
+      ...(playerId ? { 'x-player-id': playerId } : {}),
+    },
+  }
+})
+
+// Combine auth link with HTTP link
+const httpLinkWithAuth = authLink.concat(httpLink)
+
 // Split link: use WebSocket for subscriptions, HTTP for everything else
 const splitLink = split(
   ({ query }) => {
@@ -28,7 +50,7 @@ const splitLink = split(
     )
   },
   wsLink,
-  httpLink
+  httpLinkWithAuth
 )
 
 // Apollo Client instance
@@ -102,6 +124,11 @@ export async function getGame(gameId: string): Promise<Game> {
           maxPlayers
           unoWindowOpen
           unoTarget
+          gameLog {
+            type
+            message
+            timestamp
+          }
         }
       }
     `,
@@ -229,6 +256,11 @@ export async function startGame(gameId: string, playerId: string): Promise<Game>
           winner
           createdBy
           maxPlayers
+          gameLog {
+            type
+            message
+            timestamp
+          }
         }
       }
     `,
@@ -264,6 +296,11 @@ export async function playCard(gameId: string, playerId: string, cardIndex: numb
           winner
           createdBy
           maxPlayers
+          gameLog {
+            type
+            message
+            timestamp
+          }
         }
       }
     `,
@@ -299,6 +336,11 @@ export async function drawCard(gameId: string, playerId: string): Promise<Game> 
           winner
           createdBy
           maxPlayers
+          gameLog {
+            type
+            message
+            timestamp
+          }
         }
       }
     `,
