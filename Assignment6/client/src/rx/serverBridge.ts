@@ -1,25 +1,11 @@
 import { webSocket, WebSocketSubject } from 'rxjs/webSocket'
 import type { AppDispatch } from '../lib/store'
 import { setGame, setPlayerIndex, setRoomId, setRooms, setConnected, setPlayerName } from '../features/uno/unoSlice'
-import type { Color } from 'domain/src/model/deck'
+import type { ClientMessage, ServerMessage } from 'domain/src/types/messages'
 import * as Uno from 'domain/src/model/uno'
 
-export type OutgoingMessage =
-  | { type: 'set-name'; name: string }
-  | { type: 'create-room'; bots?: number; maxPlayers?: number }
-  | { type: 'join-room'; roomId: string }
-  | { type: 'start-game' }
-  | { type: 'play'; index: number; color?: Color }
-  | { type: 'draw' }
-  | { type: 'say-uno' }
-  | { type: 'catch-uno'; accused: number }
-  | { type: 'reset' }
-
-type IncomingMessage =
-  | { type: 'welcome'; clientId: string }
-  | { type: 'room-list'; rooms: { id: string; players: string[]; awaiting: number }[] }
-  | { type: 'state'; roomId: string; game: any; playerIndex: number }
-  | { type: 'error'; message: string }
+export type OutgoingMessage = ClientMessage
+export type IncomingMessage = ServerMessage
 
 export type Connection = {
   send: (msg: OutgoingMessage) => void
