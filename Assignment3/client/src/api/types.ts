@@ -1,24 +1,15 @@
 // GraphQL Types for UNO Game Client
 import type { Card, Color } from 'domain/src/model/types/card-types'
+import type { 
+  GameStatus,
+  Direction,
+  Player,
+  GameLogEntry,
+  AvailableGame,
+  PlayerHand
+} from 'domain/src/model/types/shared-types'
 
-export type GameStatus = 'WAITING' | 'IN_PROGRESS' | 'FINISHED'
-
-export type Direction = 'clockwise' | 'counterclockwise'
-
-export interface Player {
-  id: string
-  name: string
-  cardCount: number
-  hasCalledUno: boolean
-  score: number
-}
-
-export interface GameLogEntry {
-  type: string
-  message: string
-  timestamp: string
-  data?: any
-}
+export type { GameStatus, Direction, Player, GameLogEntry, AvailableGame, PlayerHand }
 
 export interface Game {
   id: string
@@ -36,20 +27,6 @@ export interface Game {
   unoWindowOpen: boolean
   unoTarget: number | null
   gameLog: GameLogEntry[]
-}
-
-export interface AvailableGame {
-  id: string
-  createdBy: string
-  playerCount: number
-  maxPlayers: number
-  status: GameStatus
-}
-
-export interface PlayerHand {
-  gameId: string
-  playerId: string
-  cards: Card[]
 }
 
 export interface GameUpdate {

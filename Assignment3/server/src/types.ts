@@ -2,23 +2,15 @@
 
 import type { Game } from '../../domain/src/model/game.js';
 import type { Card } from '../../domain/src/model/types/card-types.js';
+import type { 
+  GameStatus,
+  Player,
+  GameLogEntry,
+  AvailableGame,
+  PlayerHand
+} from '../../domain/src/model/types/shared-types.js';
 
-export type GameStatus = 'WAITING' | 'IN_PROGRESS' | 'FINISHED';
-
-export interface Player {
-  id: string;
-  name: string;
-  cardCount: number;
-  hasCalledUno: boolean;
-  score: number;
-}
-
-export interface GameLogEntry {
-  type: string;
-  message: string;
-  timestamp: string;
-  data?: any;
-}
+export type { GameStatus, Player, GameLogEntry, AvailableGame, PlayerHand }
 
 export interface GameState {
   id: string;
@@ -50,20 +42,6 @@ export interface SerializedGame {
   unoWindowOpen: boolean;
   unoTarget: number | null;
   gameLog: GameLogEntry[];
-}
-
-export interface AvailableGame {
-  id: string;
-  createdBy: string;
-  playerCount: number;
-  maxPlayers: number;
-  status: GameStatus;
-}
-
-export interface PlayerHand {
-  gameId: string;
-  playerId: string;
-  cards: Card[];
 }
 
 export interface GameUpdateEvent {

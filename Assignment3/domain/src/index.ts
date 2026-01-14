@@ -2,6 +2,7 @@
 export * from './model/types/card-types.js'
 export * from './model/types/round-types.js'
 export * from './model/types/game-types.js'
+export * from './model/types/shared-types.js'
 
 // Re-export all models
 export * from './model/card.js'

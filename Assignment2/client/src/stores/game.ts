@@ -6,6 +6,7 @@ import type { Card, Color } from 'domain/model/types/card-types'
 import { usePlayerStore } from './player'
 import { isWildCard, formatCard } from '@/utils/cardUtils'
 import { useBotWorkers } from '@/composables/useBotWorkers'
+import type { OtherPlayerInfo } from '@/types/shared'
 
 // Type definitions for store state
 interface PlayerInfo {
@@ -13,12 +14,6 @@ interface PlayerInfo {
   hand: readonly Card[]
   hasCalledUno: boolean
   score: number
-}
-
-interface OtherPlayerInfo {
-  name: string
-  cardCount: number
-  hasCalledUno: boolean
 }
 
 type GameState = 'SETUP' | 'IN_PROGRESS' | 'ROUND_OVER' | 'FINISHED'

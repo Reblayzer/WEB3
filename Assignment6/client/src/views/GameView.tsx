@@ -1,8 +1,8 @@
 import type { Card, Color } from 'domain/src/model/deck'
 import * as Round from 'domain/src/model/round'
-import UnoCard from '../UnoCard'
-import ColorChooser from '../ColorChooser'
-import type { RootState } from '../../lib/store'
+import UnoCard from '../components/UnoCard'
+import ColorChooser from '../components/ColorChooser'
+import type { RootState } from '../lib/store'
 
 type ConnectionHandle = { send: (msg: any) => void; disconnect: () => void }
 

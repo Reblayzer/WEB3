@@ -2,12 +2,7 @@
 // Uses only postMessage and onmessage as per assignment requirements
 
 import type { Card, Color } from '../../../domain/src/model/types/card-types'
-
-interface OtherPlayerInfo {
-  name: string
-  cardCount: number
-  hasCalledUno: boolean
-}
+import type { OtherPlayerInfo } from '../types/shared'
 
 interface GameState {
   hand: Card[]
