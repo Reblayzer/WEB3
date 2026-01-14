@@ -1,1385 +1,446 @@
-# Exam 4: Functional Programming
+# Exam 4: Functional Programming - Assignment 4
 
-> **Assignment 4 - Core Goal:** Write predictable, testable logic using functional principles.
-
-**You must understand:**
-
-- Pure vs impure functions
-- Immutability
-- Higher-order functions (map, filter, reduce, flatMap)
-- Function composition and pipelines
-- Currying and partial application
-- Persistent data structures (immutable.js)
-- Side effects and how to isolate them (sandwich model)
-
-**Key Idea:** Functional programming minimizes bugs by avoiding mutation and separating computation from side effects.
+**Core Goal:** Predictable, testable logic using functional principles.
 
 ---
 
-## Table of Contents
+## Functional Programming
 
-1. [Pure vs Impure Functions](#1-pure-vs-impure-functions)
-2. [Immutability](#2-immutability)
-3. [Higher-Order Functions](#3-higher-order-functions)
-4. [Function Composition and Pipelines](#4-function-composition-and-pipelines)
-5. [Currying and Partial Application](#5-currying-and-partial-application)
-6. [Persistent Data Structures](#6-persistent-data-structures)
-7. [Side Effects and Isolation (Sandwich Model)](#7-side-effects-and-isolation-sandwich-model)
-8. [Functors and Monads](#8-functors-and-monads)
-9. [Assignment 4 Implementation](#9-assignment-4-implementation)
-10. [Exam Questions & Answers](#10-exam-questions--answers)
+**Concept:** Functional programming treats computation as evaluation of functions and avoids shared mutable state. Instead of modifying data, you create new data with the changes applied. This means:
+- **Functions are primary**: Functions are first-class values - passed around, composed, stored
+- **No shared state**: Each function works independently without relying on global variables or object fields that other code might change
+- **Data flows**: Information enters a function, gets transformed, and exits - like data flowing through a pipeline
+- **Immutability**: Data structures are never modified after creation
+- **Predictability**: Since nothing changes unexpectedly, it's easier to reason about what code does
 
----
-
-## 1. Pure vs Impure Functions
-
-### What is a Pure Function?
-
-A **pure function** has two properties:
-
-1. **Deterministic**: Same inputs always produce the same output
-2. **No side effects**: Doesn't modify external state, no I/O, no randomness
-
+**Assignment 4 Example:**
 ```ts
-// ✅ PURE - deterministic, no side effects
-function add(a: number, b: number): number {
-  return a + b;
-}
+// All game state is immutable
+export type Round = {
+  readonly players: readonly string[];
+  readonly hands: readonly Card[][];
+  readonly drawPile: readonly Card[];
+  readonly discardPile: readonly Card[];
+  readonly playerInTurn: number | undefined;
+  readonly ended: boolean;
+};
 
-// ✅ PURE - only depends on parameters
-function canPlay(index: number, round: Round): boolean {
+// Functions are stateless transformations
+export const canPlay = (index: number, round: Round): boolean => {
+  if (round.ended || round.playerInTurn === undefined) return false;
+  const card = round.hands[round.playerInTurn][index];
+  const top = round.discardPile[0];
+  return card.color === top.color || card.type === top.type;
+};
+```
+
+---
+
+## Purity
+
+**Concept:** A pure function has two critical properties:
+
+1. **Deterministic**: Same inputs always produce the same output, every time. No randomness, no depending on current time or external state.
+   - `add(2, 3)` always returns `5`
+   - `canPlay(0, round)` always returns true/false for that specific card and round
+   - If the function returns something different for the same input, it's not pure
+
+2. **No side effects**: The function doesn't modify anything outside itself.
+   - No modifying variables in outer scope
+   - No I/O operations (console.log, file writes, network calls)
+   - No mutations (changing arrays, objects, or parameters)
+   - Doesn't affect the outside world - just computes and returns a value
+
+**Why pure?** Pure functions are:
+- **Testable**: No setup needed, no mocks. Just input → verify output
+- **Composable**: Can safely combine pure functions without unexpected interactions
+- **Parallelizable**: Safe to run on multiple threads (no shared state to worry about)
+- **Memoizable**: Same input → same output, so you can cache results
+
+**Assignment 4 Example:**
+```ts
+// ✅ PURE - Same inputs always give same output
+export const pointsFor = (c: Card): number => {
+  switch (c.type) {
+    case "NUMBERED": return c.number ?? 0;
+    case "SKIP": case "REVERSE": case "DRAW2": return 20;
+    case "WILD": case "WILD_DRAW4": return 50;
+  }
+};
+
+// ✅ PURE - Only depends on parameters
+export const canPlay = (index: number, round: Round): boolean => {
   const card = round.hands[round.playerInTurn!][index];
   const top = round.discardPile[0];
   return card.color === top.color || card.type === top.type;
-}
-
-// ✅ PURE - creates new array, doesn't modify input
-function addCard(hand: Card[], card: Card): Card[] {
-  return [...hand, card];
-}
-```
-
-### What is an Impure Function?
-
-```ts
-// ❌ IMPURE - modifies external state
-let total = 0;
-function addToTotal(n: number): number {
-  total += n; // Side effect!
-  return total;
-}
-
-// ❌ IMPURE - non-deterministic (random)
-function getRandomCard(deck: Card[]): Card {
-  return deck[Math.floor(Math.random() * deck.length)];
-}
-
-// ❌ IMPURE - I/O side effect
-function logCard(card: Card): void {
-  console.log(card); // Side effect!
-}
-
-// ❌ IMPURE - mutates parameter
-function addCardMutating(hand: Card[], card: Card): Card[] {
-  hand.push(card); // Mutates input!
-  return hand;
-}
-```
-
-### Why Pure Functions Matter
-
-- **Testable**: No mocks, no setup - just input → output
-- **Predictable**: Easy to reason about
-- **Composable**: Can combine without worrying about state
-- **Parallelizable**: Safe to run concurrently
-- **Memoizable**: Can cache results (same input → same output)
-
-### Assignment 4 Examples
-
-```ts
-// Pure: pointsFor in deck.ts
-export const pointsFor = (c: Card): number => {
-  switch (c.type) {
-    case "NUMBERED":
-      return c.number;
-    case "SKIP":
-    case "REVERSE":
-    case "DRAW":
-      return 20;
-    case "WILD":
-    case "WILD DRAW":
-      return 50;
-    default:
-      return 0;
-  }
 };
 
-// Pure: canPlay in round.ts
-export const canPlay = (index: number, round: Round): boolean => {
-  if (round.ended || round.playerInTurn === undefined) return false;
-  // ... pure logic based only on inputs
-};
+// Benefits: Testable (no mocks), predictable, composable
 ```
 
 ---
 
-## 2. Immutability
+## Immutability
 
-### What is Immutability?
+**Concept:** Data is never modified after it's created. Instead of changing existing data, you create a new copy with the desired changes. This means:
+- **Original unchanged**: When you "update" a Round, the old Round object stays exactly the same
+- **New version created**: A new Round with the change is returned; the original is left alone
+- **No unintended mutations**: If someone holds a reference to the original data, it won't suddenly change
+- **Time travel**: You can keep old versions around, enabling undo/redo functionality
+- **Change detection**: Since data is never mutated in place, you can detect changes by checking if object references changed (React/Vue optimization)
 
-**Immutability** means data cannot be changed after it's created. Instead of modifying existing data, you create new data with the changes.
+**Why it matters:**
+Mutation makes code unpredictable - you can't tell when data changes because multiple references point to the same object. Immutability eliminates this confusion entirely.
 
-### Why Immutability Matters
-
-- **Predictability**: Data can't change unexpectedly
-- **Easy debugging**: Can trace when/where new data was created
-- **Time travel**: Keep old versions (undo/redo)
-- **Change detection**: Compare object references (React/Vue optimizations)
-- **Thread safety**: No race conditions
-
-### Mutable (Imperative - ❌ Avoid)
-
+**Assignment 4 Example:**
 ```ts
-// BAD: Mutates the array
-function playCard(round: Round, index: number): Round {
-  round.hands[round.playerInTurn!].splice(index, 1); // Mutates!
-  return round;
-}
-
-const round = createRound(["A", "B"], 0);
-playCard(round, 0);
-// round is now modified - original lost!
-```
-
-### Immutable (Functional - ✅ Prefer)
-
-```ts
-// GOOD: Returns new Round, original unchanged
-export const play = (
-  index: number,
-  color: Color | undefined,
-  round: Round
-): Round => {
-  const hands = round.hands.map(
-    (h, i) =>
-      i === round.playerInTurn
-        ? h.filter((_, j) => j !== index) // New array
-        : h // Reuse existing
-  );
-
-  return {
-    ...round, // Shallow copy
-    hands, // New hands array
-    discardPile: [card, ...round.discardPile], // New discard pile
-  };
-};
-```
-
-### Common Immutable Patterns
-
-```ts
-// Add to array
-const added = [...array, item];
-
-// Remove from array by index
-const removed = array.filter((_, i) => i !== index);
-
-// Update at index
-const updated = array.map((item, i) => (i === index ? newValue : item));
-
-// Update object property
-const updated = { ...obj, property: newValue };
-
-// Nested update
-const updated = {
-  ...state,
-  round: {
-    ...state.round,
-    turn: newTurn,
-  },
+// ❌ DON'T: Mutate the original
+export const playCardMutating = (index: number, round: Round): Round => {
+  round.hands[round.playerInTurn!].splice(index, 1); // Mutation!
+  return round; // Original is lost
 };
 
-// Add to object
-const added = { ...obj, newKey: newValue };
-```
-
-### Assignment 4: readonly Types
-
-```ts
-// All Round fields are readonly - enforced by TypeScript
-export type Round = {
-  readonly players: readonly string[];
-  readonly hands: readonly Card[][];
-  readonly drawPile: readonly Card[];
-  readonly discardPile: readonly Card[];
-  readonly currentColor: Color;
-  readonly ended: boolean;
-  // ... all readonly
-};
-```
-
----
-
-## 3. Higher-Order Functions
-
-### What are Higher-Order Functions?
-
-**Higher-order functions (HOFs)** are functions that:
-
-- Take functions as arguments, OR
-- Return functions
-
-They're the foundation of functional programming.
-
-### Why Higher-Order Functions?
-
-- **Abstract patterns**: Don't repeat loops, abstract the iteration
-- **Code reuse**: Pass different behaviors to same HOF
-- **Composition**: Build complex operations from simple ones
-- **Declarative**: Describe what you want, not how to do it
-
-### Built-in Array HOFs
-
-```ts
-// map - transform each element
-[1, 2, 3]
-  .map((x) => x * 2) // [2, 4, 6]
-
-  [
-    // filter - keep matching elements
-    (1, 2, 3, 4)
-  ].filter((x) => x % 2 === 0) // [2, 4]
-
-  [
-    // reduce - accumulate to single value
-    (1, 2, 3)
-  ].reduce((sum, n) => sum + n, 0) // 6
-
-  [
-    // flatMap - map then flatten
-    ([1, 2], [3, 4])
-  ].flatMap((arr) => arr.map((x) => x * 2)) // [2, 4, 6, 8]
-
-  [
-    // some - at least one matches
-    (1, 2, 3)
-  ].some((x) => x > 2) // true
-
-  [
-    // every - all match
-    (1, 2, 3)
-  ].every((x) => x > 0) // true
-
-  [
-    // find - first matching element
-    (1, 2, 3)
-  ].find((x) => x > 1) // 2
-
-  [
-    // findIndex - index of first match
-    (1, 2, 3)
-  ].findIndex((x) => x > 1); // 1
-```
-
-### Functions Returning Functions
-
-```ts
-// Curried function (returns function)
-const multiply = (a: number) => (b: number) => a * b;
-const double = multiply(2); // Returns function
-double(5); // 10
-
-// Factory function
-const createPlayerAction = (playerIndex: number) => ({
-  sayUno: () => (round: Round) => sayUno(playerIndex)(round),
-  playCard: (cardIndex: number) => (round: Round) => playCard(cardIndex)(round),
-});
-```
-
-### Assignment 4 Examples
-
-```ts
-// HOF: play takes a round-transforming function
-export const play = (f: (r: Round) => Round, game: Game): Game => {
-  if (!game.currentRound) return game;
-  const updatedRound = f(game.currentRound); // Apply function
-  // ... handle round completion
-};
-
-// Usage:
-play(draw, game); // Apply draw function
-play(playCard(0), game); // Apply play function
-play((r) => sayUno(0, r), game); // Apply sayUno
-
-// map usage - transform each hand
-const handSizes = round.hands.map((hand) => hand.length);
-
-// filter usage - get playable cards
-const playableCards = round.hands[round.playerInTurn!].filter((_, i) =>
-  canPlay(i, round)
-);
-
-// reduce usage - calculate total points
-const totalPoints = round.hands
-  .flatMap((hand) => hand)
-  .reduce((sum, card) => sum + pointsFor(card), 0);
-
-// flatMap usage - get all cards from all hands
-const allCards = round.hands.flatMap((hand) => hand);
-```
-
----
-
-## 4. Function Composition and Pipelines
-
-### What is Function Composition?
-
-**Composition** combines multiple functions into a single function. Data flows through a series of transformations.
-
-### pipe vs compose
-
-```ts
-// pipe: left-to-right (how we read)
-const process = pipe(
-  filterByColor("RED"), // Step 1
-  sortByNumber, // Step 2
-  take(3) // Step 3
-);
-
-// compose: right-to-left (mathematical notation)
-const process = compose(take(3), sortByNumber, filterByColor("RED"));
-
-// Both produce same result:
-process(cards); // 3 red cards, sorted
-```
-
-### Implementing pipe
-
-```ts
-// pipe implementation
-export const pipe =
-  <T>(...fns: Array<(arg: T) => T>) =>
-  (value: T): T =>
-    fns.reduce((acc, fn) => fn(acc), value);
-
-// Usage:
-const playTurn = pipe<Round>(
-  sayUno(0), // Say UNO first
-  playCard(2), // Then play card
-  checkWinner // Then check if won
-);
-
-const newRound = playTurn(round);
-```
-
-### Array Method Chains (Built-in Pipeline)
-
-```ts
-// Array methods chain naturally - each returns new array
-const result = cards
-  .filter((card) => card.color === "RED") // Step 1: filter
-  .map((card) => card.number) // Step 2: transform
-  .filter((num) => num !== undefined) // Step 3: filter nulls
-  .sort((a, b) => a - b) // Step 4: sort
-  .slice(0, 3); // Step 5: take first 3
-
-// Same as pipe(
-//   filter(isRed),
-//   map(getNumber),
-//   filter(isDefined),
-//   sort(compareNumbers),
-//   take(3)
-// )(cards)
-```
-
-### Lodash Flow (Composition Library)
-
-```ts
-import _ from "lodash";
-
-// _.flow is like pipe - left to right
-const processCards = _.flow([
-  _.partial(_.filter, _, { color: "RED" }),
-  _.partial(_.map, _, "number"),
-  _.partial(_.take, _, 3),
-]);
-
-processCards(cards);
-```
-
-### Assignment 4 Examples
-
-```ts
-// Composition with pipe in round-functional.ts
-export const sayUnoAndPlay = (player: number, cardIndex: number) =>
-  pipe<Round>(sayUno(player), playCard(cardIndex));
-
-// Array method chaining for score calculation
-export const score = (round: Round): number | undefined => {
-  if (!round.ended || round.winner === undefined) return undefined;
-  return _.sum(
-    round.hands.flatMap((h, idx) =>
-      idx === round.winner ? [] : h.map(pointsFor)
-    )
-  );
-};
-
-// Lodash flow in tests
-const playSequence = _.flow([draw, _.partial(play, 2, undefined), draw]);
-```
-
----
-
-## 5. Currying and Partial Application
-
-### What is Currying?
-
-**Currying** transforms a function taking multiple arguments into a sequence of functions each taking one argument.
-
-```ts
-// Normal function
-function add(a: number, b: number): number {
-  return a + b;
-}
-add(2, 3); // 5
-
-// Curried version
-const addCurried = (a: number) => (b: number) => a + b;
-addCurried(2)(3); // 5
-```
-
-### Why Curry?
-
-- **Partial application**: Fix some arguments, supply others later
-- **Specialized functions**: Create variations from general functions
-- **Composition**: Easier to compose single-argument functions
-- **Data-last style**: Put data as last parameter for better composition
-
-### Partial Application
-
-**Partial application** fixes some arguments of a function, returning a new function that takes the remaining arguments.
-
-```ts
-// General function
-const canPlay = (index: number, round: Round): boolean => {
-  /* ... */
-};
-
-// Curry it
-const canPlayCurried =
-  (index: number) =>
-  (round: Round): boolean =>
-    canPlay(index, round);
-
-// Partial application - fix first argument
-const canPlayFirst = canPlayCurried(0);
-const canPlaySecond = canPlayCurried(1);
-
-// Use specialized functions
-canPlayFirst(round1); // Check if card 0 is playable
-canPlayFirst(round2); // Same function, different round
-canPlaySecond(round1); // Check if card 1 is playable
-```
-
-### curry2 and curry3 Helpers
-
-```ts
-// Curry a 2-parameter function
-export const curry2 =
-  <A, B, R>(fn: (a: A, b: B) => R) =>
-  (a: A) =>
-  (b: B): R =>
-    fn(a, b);
-
-// Curry a 3-parameter function
-export const curry3 =
-  <A, B, C, R>(fn: (a: A, b: B, c: C) => R) =>
-  (a: A) =>
-  (b: B) =>
-  (c: C): R =>
-    fn(a, b, c);
-
-// Usage:
-const canPlay = curry2(canPlayUncurried);
-const play = curry3(playUncurried);
-```
-
-### Point-Free Style
-
-When functions are curried, you can write code without mentioning the data parameter.
-
-```ts
-// With explicit parameter
-const getPlayableCards = (round: Round) =>
-  round.hands[round.playerInTurn!].filter((_, i) => canPlay(i, round));
-
-// Point-free (no 'round' parameter mentioned)
-const getPlayableCards = filter(isPlayable); // if properly curried
-```
-
-### Assignment 4 Examples
-
-```ts
-// Curried API in round-functional.ts
-export const canPlay = curry2(canPlayUncurried);
-export const sayUno = curry2(sayUnoUncurried);
-export const play = curry3(playUncurried);
-
-// Partial application examples
-const canPlayFirst = canPlay(0); // Fix index, round comes later
-const sayUnoForAlice = sayUno(0); // Fix player, round comes later
-
-// Create specialized functions
-const filterByColor = (color: Color) => (cards: Card[]) =>
-  cards.filter((c) => "color" in c && c.color === color);
-
-const filterRed = filterByColor("RED");
-const filterBlue = filterByColor("BLUE");
-
-// Use them
-filterRed(hand); // All red cards
-filterBlue(hand); // All blue cards
-
-// Player action factory
-const aliceActions = createPlayerAction(0);
-round = aliceActions.playCard(2)(round);
-round = aliceActions.sayUno()(round);
-```
-
----
-
-## 6. Persistent Data Structures
-
-### What are Persistent Data Structures?
-
-**Persistent data structures** are immutable structures that efficiently share unchanged parts between versions using **structural sharing**.
-
-### The Problem with Plain Immutability
-
-```ts
-// Plain JavaScript immutable update - copies everything!
-const newState = {
-  ...state,
-  players: [...state.players],
-  scores: [...state.scores],
-  rounds: [...state.rounds],
-};
-
-// For large data, this is expensive (O(n))
-```
-
-### Structural Sharing
-
-When you "update" a persistent structure, only the path from root to changed node is copied. Everything else is shared.
-
-```
-Original tree:      Updated tree:
-     A                  A'
-    / \                / \
-   B   C              B'  C  (shared!)
-  / \                / \
- D   E              D'  E  (shared!)
-
-Only A, B, D are copied. C and E are reused.
-```
-
-### Immutable.js Basics
-
-```ts
-import { Map, List, fromJS } from "immutable";
-
-// Map - immutable object
-const player = Map({ name: "Alice", score: 0 });
-const updated = player.set("score", 10);
-
-player.get("score"); // 0 - original unchanged
-updated.get("score"); // 10 - new version
-
-// List - immutable array
-const cards = List([card1, card2, card3]);
-const withCard = cards.push(card4); // Returns new List
-const withoutFirst = cards.shift(); // Returns new List
-
-// Deep updates with setIn
-const game = fromJS({
-  round: {
-    players: ["A", "B"],
-    turn: 0,
-  },
-});
-
-const newGame = game.setIn(["round", "turn"], 1);
-```
-
-### Performance
-
-| Operation | Plain JS  | Immutable.js       |
-| --------- | --------- | ------------------ |
-| Update    | O(n)      | O(log n)           |
-| Access    | O(1)      | O(log n)           |
-| Memory    | Full copy | Structural sharing |
-
-### Lazy Sequences (Seq)
-
-**Seq** provides lazy evaluation - operations don't execute until you request the result.
-
-```ts
-import { Seq, Range } from "immutable";
-
-// Eager (List) - creates intermediate arrays
-List([1, 2, 3, 4, 5])
-  .map((x) => x * 2) // [2, 4, 6, 8, 10] created
-  .filter((x) => x > 5) // [6, 8, 10] created
-  .toArray(); // [6, 8, 10]
-
-// Lazy (Seq) - single pass, no intermediate arrays
-Seq([1, 2, 3, 4, 5])
-  .map((x) => x * 2) // Not executed yet
-  .filter((x) => x > 5) // Still not executed
-  .toArray(); // NOW executes in single pass: [6, 8, 10]
-
-// Infinite sequences (only possible with lazy evaluation)
-Range(1, Infinity)
-  .filter((x) => x % 2 === 0)
-  .map((x) => x * x)
-  .take(5) // Only computes first 5
-  .toArray(); // [4, 16, 36, 64, 100]
-```
-
-### Assignment 4: Spread Operator Structural Sharing
-
-While Assignment 4 doesn't use Immutable.js, the spread operator provides lightweight structural sharing:
-
-```ts
-// Shallow copy - shares nested objects/arrays
-const newRound = {
-  ...round, // Top level copied
-  hands: newHands, // New hands array
-  // But unchanged fields still reference same data
-};
-
-// Only changed parts are new, rest is shared
-```
-
----
-
-## 7. Side Effects and Isolation (Sandwich Model)
-
-### What are Side Effects?
-
-**Side effects** are any operation that affects the outside world:
-
-- Modifying variables outside function scope
-- I/O operations (console.log, file access, network requests)
-- Randomness (Math.random, Date.now)
-- DOM manipulation
-- Throwing exceptions
-
-### The Sandwich Model
-
-**Pure core, impure shell**: Keep side effects at the boundaries, pure logic in the center.
-
-```
-┌─────────────────────────────┐
-│   IMPURE SHELL (I/O)        │  ← User input, API calls
-├─────────────────────────────┤
-│   PURE CORE (Logic)         │  ← Business logic, transformations
-├─────────────────────────────┤
-│   IMPURE SHELL (I/O)        │  ← Database, logging, rendering
-└─────────────────────────────┘
-```
-
-### Isolating Randomness (Dependency Injection)
-
-```ts
-// ❌ IMPURE: Randomness inside function
-function shuffle<T>(array: T[]): T[] {
-  const copy = [...array];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = (Math.floor(Math.random() * (i + 1))[(copy[i], copy[j])] =
-      // Impure!
-      [copy[j], copy[i]]);
-  }
-  return copy;
-}
-
-// ✅ PURE: Inject randomness as dependency
-type Shuffler<T> = (array: readonly T[]) => T[];
-
-function createRound(players: string[], shuffler: Shuffler<Card>): Round {
-  const deck = shuffler(createInitialDeck()); // Injected behavior
-  // ... rest is pure transformation
-}
-
-// In production: inject real randomness
-createRound(["A", "B"], standardShuffler);
-
-// In tests: inject predictable "randomness"
-createRound(["A", "B"], (arr) => arr); // Identity shuffler
-```
-
-### Isolating I/O
-
-```ts
-// ❌ IMPURE: Logging inside business logic
-function playCard(round: Round, index: number): Round {
-  console.log(`Playing card ${index}`); // Side effect!
-  const newRound = {
-    /* ... */
-  };
-  return newRound;
-}
-
-// ✅ PURE: Return data, caller handles logging
-function playCard(
-  round: Round,
-  index: number
-): { round: Round; message: string } {
-  const card = round.hands[round.playerInTurn!][index];
-  const newRound = {
-    /* ... */
-  };
-
-  return {
-    round: newRound,
-    message: `Player played ${card.color} ${card.number}`,
-  };
-}
-
-// Caller does the side effect
-const { round: newRound, message } = playCard(round, 0);
-console.log(message); // Side effect at the boundary
-```
-
-### Assignment 4 Examples
-
-```ts
-// Shuffler type - randomness abstraction
-export type Shuffler<T> = (ts: readonly T[]) => T[];
-
-// Standard shuffler (impure) - used at boundaries
-export const standardShuffler: Shuffler<any> = <T>(ts: readonly T[]): T[] => {
-  const copy = [...ts];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = (Math.floor(Math.random() * (i + 1))[(copy[i], copy[j])] = [
-      copy[j],
-      copy[i],
-    ]);
-  }
-  return copy;
-};
-
-// Pure function accepts shuffler
-const initialState = (args: RoundArgs): Round => {
-  const { shuffler = standardShuffler } = args; // Injected
-  const deck = shuffler(createInitialDeck()); // Used here
-  // ... rest is pure
-};
-
-// Tests inject predictable shuffler
-const testShuffler = <T>(arr: readonly T[]): T[] => [...arr];
-const round = createRound({
-  players: ["A", "B"],
-  dealer: 0,
-  shuffler: testShuffler,
-});
-```
-
----
-
-## 8. Functors and Monads
-
-### What is a Functor?
-
-A **functor** is a data structure with a `map` method that:
-
-- Applies a function to wrapped value(s)
-- Preserves the structure
-
-```ts
-// Array is a functor
-[1, 2, 3].map((x) => x * 2); // [2, 4, 6]
-// Structure preserved: array in → array out
-
-// Type signature:
-// F<T>.map(fn: T => U): F<U>
-```
-
-### What is a Monad?
-
-A **monad** is a functor with `flatMap` (also called `bind` or `chain`) that:
-
-- Applies a function returning a wrapped value
-- Flattens the result (prevents nesting)
-
-```ts
-// Without flatMap - nested arrays
-[
-  [1, 2],
-  [3, 4],
-]
-  .map((arr) => arr.map((x) => x * 2))
-  [
-    // [[2, 4], [6, 8]] - nested!
-
-    // With flatMap - flattened
-    ([1, 2], [3, 4])
-  ].flatMap((arr) => arr.map((x) => x * 2));
-// [2, 4, 6, 8] - flat!
-
-// Type signature:
-// M<T>.flatMap(fn: T => M<U>): M<U>
-```
-
-### Common Monads
-
-#### Promise (Async Monad)
-
-```ts
-// .then() is like flatMap - flattens nested Promises
-fetchUser(id) // Promise<User>
-  .then((user) => fetchOrders(user.id)) // Promise<Order[]> (not Promise<Promise<Order[]>>)
-  .then((orders) => processOrders(orders)); // Promise<Result>
-```
-
-#### Maybe/Optional (Null Safety Monad)
-
-```ts
-// Maybe monad - safe null handling
-export type Maybe<T> = { readonly value: T | undefined };
-
-export const Maybe = {
-  of: <T>(value: T | undefined): Maybe<T> => ({ value }),
-
-  map:
-    <T, U>(fn: (x: T) => U) =>
-    (maybe: Maybe<T>): Maybe<U> => ({
-      value: maybe.value !== undefined ? fn(maybe.value) : undefined,
-    }),
-
-  flatMap:
-    <T, U>(fn: (x: T) => Maybe<U>) =>
-    (maybe: Maybe<T>): Maybe<U> =>
-      maybe.value !== undefined ? fn(maybe.value) : { value: undefined },
-
-  getOrElse:
-    <T>(defaultValue: T) =>
-    (maybe: Maybe<T>): T =>
-      maybe.value !== undefined ? maybe.value : defaultValue,
-};
-
-// Usage:
-const maybeUser = Maybe.of(getUser());
-const city = pipe(
-  maybeUser,
-  Maybe.map((u) => u.address), // Maybe<Address>
-  Maybe.map((a) => a.city), // Maybe<string>
-  Maybe.getOrElse("Unknown") // string
-);
-```
-
-#### Either/Result (Error Handling Monad)
-
-```ts
-type Either<L, R> =
-  | { type: "Left"; value: L } // Error case
-  | { type: "Right"; value: R }; // Success case
-
-// Chain operations that might fail
-const result = pipe(
-  parseInput(data), // Either<Error, Input>
-  flatMap(validate), // Either<Error, Valid>
-  flatMap(process), // Either<Error, Result>
-  getOrElse(defaultValue)
-);
-```
-
-### Assignment 4 Examples
-
-```ts
-// Maybe monad in round-functional.ts
-export const getCurrentHand = (round: Round): Maybe<readonly Card[]> =>
-  Maybe.of(
-    round.playerInTurn !== undefined
-      ? round.hands[round.playerInTurn]
-      : undefined
-  );
-
-// Using Maybe monad
-const handSize = pipe(
-  getCurrentHand(round),
-  Maybe.map((hand) => hand.length),
-  Maybe.getOrElse(0)
-);
-
-// Array as monad (flatMap)
-const allCards = round.hands.flatMap((hand) => hand); // Flattens
-
-// Array in score calculation
-export const score = (round: Round): number | undefined => {
-  if (!round.ended || round.winner === undefined) return undefined;
-  return _.sum(
-    round.hands.flatMap((h, idx) =>
-      idx === round.winner ? [] : h.map(pointsFor)
-    )
-  );
-};
-```
-
----
-
-## 9. Assignment 4 Implementation
-
-### File Structure
-
-```
-uno-functional/
-├── src/
-│   ├── model/
-│   │   ├── deck.ts              # Card types, deck creation (pure)
-│   │   ├── round.ts             # Core round logic (pure functions)
-│   │   ├── round-functional.ts  # Curried API, composition
-│   │   └── uno.ts               # Game orchestration (pure)
-│   └── utils/
-│       ├── functional.ts        # FP utilities (pipe, curry, Maybe)
-│       └── random_utils.ts      # Randomness abstraction
-└── __test__/                    # 185 tests
-```
-
-### Key Patterns Used
-
-#### 1. Immutability with readonly
-
-```ts
-// All types use readonly
-export type Round = {
-  readonly players: readonly string[];
-  readonly hands: readonly Card[][];
-  readonly drawPile: readonly Card[];
-  readonly discardPile: readonly Card[];
-  // ... all readonly
-};
-```
-
-#### 2. Pure Functions
-
-```ts
-// All game logic is pure
-export const play = (
-  index: number,
-  color: Color | undefined,
-  round: Round
-): Round => {
-  // Returns new Round, doesn't mutate parameter
-  return { ...round /* changes */ };
-};
-
-export const canPlay = (index: number, round: Round): boolean => {
-  // Deterministic, no side effects
-  return; /* pure logic */
-};
-```
-
-#### 3. Higher-Order Functions
-
-```ts
-// Game.play accepts round transformer
-export const play = (f: (r: Round) => Round, game: Game): Game => {
-  const updatedRound = f(game.currentRound);
-  // ...
-};
-
-// Usage:
-play(draw, game);
-play((r) => playCard(0, r), game);
-```
-
-#### 4. Currying
-
-```ts
-// Curried API in round-functional.ts
-export const canPlay = curry2((index: number, round: Round) => {
-  /* ... */
-});
-export const sayUno = curry2((player: number, round: Round) => {
-  /* ... */
-});
-export const play = curry3(
-  (index: number, color: Color | undefined, round: Round) => {
-    /* ... */
-  }
-);
-
-// Partial application
-const canPlayFirst = canPlay(0);
-canPlayFirst(round1); // Check different rounds
-canPlayFirst(round2);
-```
-
-#### 5. Function Composition
-
-```ts
-// Pipe utility
-export const pipe =
-  <T>(...fns: Array<(arg: T) => T>) =>
-  (value: T): T =>
-    fns.reduce((acc, fn) => fn(acc), value);
-
-// Composed operations
-export const sayUnoAndPlay = (player: number, cardIndex: number) =>
-  pipe<Round>(sayUno(player), playCard(cardIndex));
-```
-
-#### 6. Side Effect Isolation
-
-```ts
-// Shuffler type - inject randomness
-type Shuffler<T> = (array: readonly T[]) => T[];
-
-// Pure function accepts shuffler
-const initialState = (args: { shuffler?: Shuffler<Card> }): Round => {
-  const { shuffler = standardShuffler } = args;
-  const deck = shuffler(createInitialDeck());
-  // ...
-};
-
-// Tests use predictable shuffler
-const testShuffler = <T>(arr: readonly T[]): T[] => [...arr];
-```
-
-#### 7. Array Methods (HOFs)
-
-```ts
-// map - transform
-const handSizes = round.hands.map((hand) => hand.length);
-
-// filter - select
-const playableCards = hand.filter((_, i) => canPlay(i, round));
-
-// reduce - accumulate
-const total = cards.reduce((sum, card) => sum + pointsFor(card), 0);
-
-// flatMap - map and flatten
-const allCards = round.hands.flatMap((hand) => hand);
-```
-
-### Theory Checklist
-
-✅ **Pure Functions**: All game logic is pure, deterministic  
-✅ **Immutability**: All types `readonly`, spread operators, no mutations  
-✅ **Higher-Order Functions**: `map`, `filter`, `reduce`, `flatMap`, `play(f, game)`  
-✅ **Function Composition**: `pipe` utility, composed operations  
-✅ **Currying**: Curried API in `round-functional.ts`  
-✅ **Partial Application**: Specialized functions via currying  
-✅ **Persistent Data Structures**: Structural sharing via spread  
-✅ **Side Effect Isolation**: Shuffler injection (sandwich model)  
-✅ **Functors**: Arrays, Maybe monad  
-✅ **Monads**: Maybe monad, Array flatMap
-
----
-
-## 10. Exam Questions & Answers
-
-### Pure vs Impure Functions
-
-**Q: What makes a function pure?**
-
-A: A pure function has two properties:
-
-1. **Deterministic**: Same inputs always produce same outputs
-2. **No side effects**: Doesn't modify external state, no I/O, no randomness
-
-**Q: Why are pure functions easier to test?**
-
-A: No mocks or setup needed - just pass inputs and assert outputs. They're predictable and isolated.
-
-**Q: How do you make a function with randomness pure?**
-
-A: Inject the randomness as a dependency (parameter). The function is pure - it just uses the injected behavior.
-
-```ts
-// Instead of: Math.random() inside
-// Do: type Shuffler<T> = (arr: T[]) => T[]
-//     function create(shuffler: Shuffler) { ... }
-```
-
-### Immutability
-
-**Q: What is immutability?**
-
-A: Data cannot be changed after creation. Instead of modifying, you create new data with the changes.
-
-**Q: How do you update an immutable array?**
-
-A:
-
-```ts
-// Add: [...array, item]
-// Remove: array.filter((_, i) => i !== index)
-// Update: array.map((item, i) => i === index ? newValue : item)
-```
-
-**Q: How do you update a nested immutable object?**
-
-A:
-
-```ts
-const updated = {
-  ...state,
-  round: {
-    ...state.round,
-    turn: newTurn,
-  },
-};
-```
-
-**Q: What are the benefits of immutability?**
-
-A:
-
-- Predictable - data can't change unexpectedly
-- Easy debugging - trace when/where data was created
-- Time travel - keep old versions (undo/redo)
-- Change detection - compare object references
-- Thread safe - no race conditions
-
-### Higher-Order Functions
-
-**Q: What is a higher-order function?**
-
-A: A function that takes functions as arguments OR returns functions.
-
-**Q: Give examples of built-in HOFs.**
-
-A: `map`, `filter`, `reduce`, `flatMap`, `some`, `every`, `find`
-
-**Q: What's the difference between map and flatMap?**
-
-A:
-
-- `map`: Transforms each element, preserves structure
-- `flatMap`: Transforms each element to array, then flattens one level
-
-```ts
-[
-  [1, 2],
-  [3, 4],
-]
-  .map((arr) => arr.map((x) => x * 2)) // [[2,4], [6,8]]
-  [([1, 2], [3, 4])].flatMap((arr) => arr.map((x) => x * 2)); // [2,4,6,8]
-```
-
-### Function Composition
-
-**Q: What is function composition?**
-
-A: Combining multiple functions into a single function. Data flows through a series of transformations.
-
-**Q: What's the difference between pipe and compose?**
-
-A:
-
-- `pipe`: Left-to-right (how we read): `pipe(f, g, h)(x)` = `h(g(f(x)))`
-- `compose`: Right-to-left (mathematical): `compose(h, g, f)(x)` = `h(g(f(x)))`
-
-**Q: Show a pipe implementation.**
-
-A:
-
-```ts
-export const pipe =
-  <T>(...fns: Array<(arg: T) => T>) =>
-  (value: T): T =>
-    fns.reduce((acc, fn) => fn(acc), value);
-```
-
-### Currying
-
-**Q: What is currying?**
-
-A: Transforming a function taking multiple arguments into a sequence of functions each taking one argument.
-
-```ts
-// Normal: add(2, 3)
-// Curried: add(2)(3)
-```
-
-**Q: What is partial application?**
-
-A: Fixing some arguments of a function, returning a new function that takes the remaining arguments.
-
-```ts
-const canPlay = (index: number) => (round: Round) => {
-  /* ... */
-};
-const canPlayFirst = canPlay(0); // Partial application
-```
-
-**Q: Why curry functions?**
-
-A:
-
-- Enables partial application (specialized functions)
-- Easier function composition
-- Data-last parameter order for better composition
-
-### Persistent Data Structures
-
-**Q: What are persistent data structures?**
-
-A: Immutable structures that efficiently share unchanged parts between versions (structural sharing).
-
-**Q: What is structural sharing?**
-
-A: When updating, only the path from root to changed node is copied. Everything else is shared between old and new versions.
-
-**Q: What's the performance difference?**
-
-A:
-
-- Plain JS immutable update: O(n) - copies everything
-- Persistent structure: O(log n) - only copies changed path
-
-**Q: What is lazy evaluation (Seq)?**
-
-A: Operations don't execute immediately - they're recorded and only run when you need the result. Avoids intermediate arrays, enables infinite sequences.
-
-### Side Effects
-
-**Q: What are side effects?**
-
-A:
-
-- Modifying variables outside function scope
-- I/O operations (console.log, file, network)
-- Randomness (Math.random, Date.now)
-- DOM manipulation
-- Throwing exceptions
-
-**Q: What is the sandwich model?**
-
-A: Pure core, impure shell. Keep side effects at the boundaries, pure logic in the center.
-
-```
-Impure Shell (I/O) ← Input
-Pure Core (Logic)  ← Business logic
-Impure Shell (I/O) ← Output
-```
-
-**Q: How do you isolate randomness?**
-
-A: Dependency injection - pass a shuffler/randomizer function as a parameter.
-
-```ts
-type Shuffler<T> = (arr: T[]) => T[];
-function create(shuffler: Shuffler) {
-  /* pure */
-}
-```
-
-### Functors and Monads
-
-**Q: What is a functor?**
-
-A: Data structure with a `map` method that preserves structure. Array is a functor.
-
-**Q: What is a monad?**
-
-A: Functor with `flatMap` that applies a function returning a wrapped value, then flattens the result.
-
-**Q: Why use flatMap instead of map?**
-
-A: Prevents nesting. `map` with function returning array gives nested array. `flatMap` flattens it.
-
-**Q: Give examples of monads.**
-
-A:
-
-- **Promise**: `.then()` is flatMap for async
-- **Maybe/Optional**: Safe null handling
-- **Either/Result**: Error handling
-- **Array**: Has both map and flatMap
-
-### Assignment 4 Specific
-
-**Q: How is randomness handled in Assignment 4?**
-
-A: Shuffler type injected as parameter - pure function, impure behavior injected at boundaries.
-
-**Q: Why are all fields readonly in Assignment 4?**
-
-A: TypeScript compiler enforces immutability - prevents accidental mutations.
-
-**Q: Show a pure function from Assignment 4.**
-
-A:
-
-```ts
-export const pointsFor = (c: Card): number => {
-  switch (c.type) {
-    case "NUMBERED":
-      return c.number;
-    case "SKIP":
-    case "REVERSE":
-    case "DRAW":
-      return 20;
-    case "WILD":
-    case "WILD DRAW":
-      return 50;
-    default:
-      return 0;
-  }
-};
-```
-
-**Q: Show an immutable update from Assignment 4.**
-
-A:
-
-```ts
+// ✅ DO: Create new data
 export const play = (
   index: number,
   color: Color | undefined,
   round: Round
 ): Round => {
   const hands = round.hands.map((h, i) =>
-    i === round.playerInTurn ? h.filter((_, j) => j !== index) : h
+    i === round.playerInTurn ? h.filter((_, idx) => idx !== index) : h
   );
+  const card = round.hands[round.playerInTurn!][index];
 
   return {
-    ...round,
+    ...round,  // Shallow copy - structure sharing
     hands,
     discardPile: [card, ...round.discardPile],
+    currentColor: "color" in card ? card.color : round.currentColor,
+    playerInTurn: (round.playerInTurn! + 1) % round.players.length,
   };
 };
+
+// All fields are readonly - TypeScript enforces immutability
 ```
 
-**Q: Show a higher-order function from Assignment 4.**
+---
 
-A:
+## Callbacks and Higher-Order Functions
 
+**Concept:** A higher-order function (HOF) is a function that either:
+1. **Takes a function as an argument** (callback), or
+2. **Returns a function** as its result
+
+This is powerful because:
+- **Abstraction**: Instead of writing loops manually (`for`, `while`), you pass a function that says what to do with each element
+- **Code reuse**: One `map` function works with any transformation function you give it
+- **Declarative**: You describe WHAT transformation to do, not HOW to loop through data
+- **Flexibility**: Same utility (map, filter) works for any data type with any function
+
+**Common array HOFs:**
+- `map(fn)`: Transform each element with function `fn`
+- `filter(fn)`: Keep only elements where `fn` returns true
+- `reduce(fn, initial)`: Combine all elements using function `fn` into a single value
+- `flatMap(fn)`: Transform each element with `fn`, then flatten the result
+
+**Assignment 4 Example:**
 ```ts
+// map - transform each element
+const handSizes = round.hands.map(hand => hand.length);
+
+// filter - keep only matching elements
+const playableCards = round.hands[round.playerInTurn!]
+  .filter((_, i) => canPlay(i, round));
+
+// flatMap - map then flatten
+const allCards = round.hands.flatMap(hand => hand);
+
+// reduce - accumulate to single value
+const totalPoints = allCards.reduce((sum, card) => sum + pointsFor(card), 0);
+
+// Game.play - accepts function that transforms Round
 export const play = (f: (r: Round) => Round, game: Game): Game => {
+  if (!game.currentRound) return game;
   const updatedRound = f(game.currentRound);
-  // ...
+  // Handle round completion...
 };
 
 // Usage:
-play(draw, game);
-play((r) => sayUno(0, r), game);
+play(draw, game);                    // Apply draw function
+play((r) => playCard(0, r), game);  // Apply play function
+play((r) => sayUno(0, r), game);    // Apply sayUno function
 ```
 
-**Q: Show currying from Assignment 4.**
+---
 
-A:
+## Pipelining
 
+**Concept:** Pipelining chains multiple transformations together. Data flows through a sequence of functions, with each function's output becoming the next function's input.
+
+**Key idea**: Think of a factory assembly line:
+1. Raw material enters
+2. Station 1 transforms it
+3. Station 2 receives transformed material, transforms further
+4. Station 3 receives that, transforms it again
+5. Finished product exits
+
+**Why pipeline?**
+- **Readable**: You can follow data transformation step-by-step, top-to-bottom
+- **Modular**: Each transformation is independent - test it separately
+- **Maintainable**: Easy to add/remove/reorder steps
+- **Composable**: Build complex operations from simple building blocks
+
+**Assignment 4 Example:**
 ```ts
-// Curried versions
-export const canPlay = curry2(canPlayUncurried);
-export const sayUno = curry2(sayUnoUncurried);
+// pipe implementation - compose functions left to right
+export const pipe = <T>(...fns: Array<(arg: T) => T>) => (value: T): T =>
+  fns.reduce((acc, fn) => fn(acc), value);
 
-// Partial application
-const canPlayFirst = canPlay(0);
-canPlayFirst(round1);
-canPlayFirst(round2);
+// Array method chaining - natural pipeline
+const scores = allCards
+  .filter(card => pointsFor(card) > 10)
+  .map(card => pointsFor(card))
+  .reduce((sum, points) => sum + points, 0);
+
+// Composed operations using pipe
+export const sayUnoAndPlay = (player: number, cardIndex: number) =>
+  pipe<Round>(
+    sayUno(player),      // Step 1: Say UNO
+    playCard(cardIndex)  // Step 2: Play card
+  );
+
+// Usage
+const newRound = sayUnoAndPlay(0, 2)(round);
 ```
+
+---
+
+## Currying
+
+**Concept:** Currying transforms a function that takes multiple arguments into a sequence of functions, each taking one argument.
+
+**Example:**
+```ts
+// Normal function: takes 2 arguments at once
+const add = (a: number, b: number) => a + b;
+add(2, 3);  // Call with both arguments
+
+// Curried function: takes 1 argument, returns function for next argument
+const addCurried = (a: number) => (b: number) => a + b;
+addCurried(2)(3);  // Call in stages
+```
+
+**Partial Application**: The real power. When you curry, you can "fix" early arguments and create specialized functions:
+```ts
+const addCurried = (a: number) => (b: number) => a + b;
+const add5 = addCurried(5);  // Fix first arg, get function waiting for second
+add5(3);   // → 8
+add5(10);  // → 15
+```
+
+**Why curry?**
+- **Partial application**: Create specialized versions of general functions
+- **Composition**: Curried functions are easier to compose (1 arg in, 1 value out)
+- **Reusability**: Define once, use in many contexts
+- **Data-last pattern**: Put data as last argument for better composition
+
+**Assignment 4 Example:**
+```ts
+// curry2 helper - convert 2-arg function to curried form
+export const curry2 = <A, B, R>(fn: (a: A, b: B) => R) => (a: A) => (b: B): R =>
+  fn(a, b);
+
+// curry3 helper - convert 3-arg function to curried form
+export const curry3 = <A, B, C, R>(fn: (a: A, b: B, c: C) => R) =>
+  (a: A) => (b: B) => (c: C): R => fn(a, b, c);
+
+// Apply to Assignment 4 functions
+export const canPlay = curry2(
+  (index: number, round: Round): boolean => {
+    // ... pure logic
+  }
+);
+
+export const play = curry3(
+  (index: number, color: Color | undefined, round: Round): Round => {
+    // ... returns new Round
+  }
+);
+
+// Partial application - fix first argument, use later with different data
+const canPlayFirst = canPlay(0);   // Function waiting for round
+canPlayFirst(round1);              // Check if card 0 playable in round1
+canPlayFirst(round2);              // Check if card 0 playable in round2
+
+// Create specialized functions for each player
+const aliceActions = {
+  canPlay: canPlay(0),
+  play: play(0),
+};
+```
+
+---
+
+## Persistent Data Structures
+
+**Concept:** Persistent data structures provide efficient immutability through **structural sharing** - a technique where multiple versions of data share the unchanged parts instead of copying everything.
+
+**The problem:**
+Naive immutability copies everything:
+```ts
+const state1 = { player: "Alice", score: 0, hand: [card1, card2] };
+const state2 = { ...state1, score: 10 }; // Copies entire object
+// Performance: O(n) - copies all fields
+```
+
+**Structural sharing solution:**
+When you update, only changed path is copied. Rest is reused:
+```
+Both versions share unchanged data:
+state1.hand === state2.hand  // true - same reference!
+only score is different
+```
+
+**Why structural sharing matters:**
+- **Memory efficient**: Don't copy data you're not changing
+- **Performance**: O(log n) for updates instead of O(n)
+- **Immutability without cost**: Efficient immutability without huge memory overhead
+
+**In Assignment 4:**
+The spread operator provides lightweight structural sharing - efficient enough for typical applications.
+
+**Assignment 4 Example:**
+```ts
+// Structural sharing with spread operator - lightweight alternative to immutable.js
+export const play = (
+  index: number,
+  color: Color | undefined,
+  round: Round
+): Round => {
+  // Only create new hands array for current player
+  const hands = round.hands.map((h, i) =>
+    i === round.playerInTurn ? h.filter((_, idx) => idx !== index) : h
+  );
+  const card = round.hands[round.playerInTurn!][index];
+
+  // Top-level copy, but unchanged objects are reused
+  return {
+    ...round,  // Copies reference to other fields
+    hands,     // Only this is new - rest shared
+    discardPile: [card, ...round.discardPile],
+  };
+};
+
+// Shallow copy - top level new, nested structures shared
+// Performance: O(n) where n = changed fields, not total data size
+// Memory: Only changed path copied, rest shared between versions
+```
+
+---
+
+## Lightweight Proxies (Lazy Evaluation)
+
+**Concept:** Lazy evaluation defers computation until the result is actually needed. This avoids creating intermediate data structures and unnecessary calculations.
+
+**Eager evaluation (wasteful):**
+```ts
+const numbers = [1, 2, 3, 4, 5];
+const step1 = numbers.map(x => x * 2);    // Creates [2, 4, 6, 8, 10] in memory
+const step2 = step1.filter(x => x > 5);   // Creates [6, 8, 10] in memory
+const result = step2.reduce((s, x) => s+x); // 24
+// 3 array objects created, data traversed 3 times
+```
+
+**Lazy evaluation (efficient):**
+```ts
+const result = numbers
+  .map(x => x * 2)       // Not executed yet
+  .filter(x => x > 5)    // Not executed yet
+  .reduce((s, x) => s+x); // NOW executes in single pass
+// Single traversal, no intermediate arrays
+```
+
+**Why lazy evaluation?**
+- **Memory efficiency**: No intermediate arrays taking up memory
+- **Performance**: Single pass through data instead of multiple passes
+- **Infinite sequences**: Can work with infinite data if you take finite results
+- **Composition**: Build transformations without performance penalty
+
+**Assignment 4 Example:**
+```ts
+// Score calculation - chains operations lazily
+export const score = (round: Round): number | undefined => {
+  if (!round.ended || round.winner === undefined) return undefined;
+  
+  // Transform: hands -> cards -> filter non-winners -> sum points
+  return round.hands
+    .flatMap((hand, idx) =>
+      idx === round.winner ? [] : hand  // Remove winner's cards
+    )
+    .reduce((sum, card) => sum + pointsFor(card), 0);
+};
+
+// Single pass - no intermediate arrays created
+// map/filter/reduce executed together, not as separate steps
+// With 4 players, 7 cards each (28 cards):
+//   - Eager: creates [28] -> [21] -> result (intermediate arrays)
+//   - Lazy: single pass through 21 cards (Assignment 4 approach)
+```
+
+---
+
+## Key Idea
+
+Functional programming reduces bugs by:
+- **Avoiding mutation** - data never changes, new versions created
+- **Isolating side effects** - pure logic in center, I/O at boundaries
+- **Enabling composition** - small testable functions combine into larger systems
+
+---
+
+## File Structure
+
+```
+uno-functional/
+├── src/
+│   ├── model/
+│   │   ├── deck.ts           # pointsFor (pure function)
+│   │   ├── round.ts          # Core: canPlay, play, draw (pure)
+│   │   ├── round-functional.ts # Curried API, composition
+│   │   └── uno.ts            # Game orchestration (pure)
+│   └── utils/
+│       └── functional.ts     # pipe, curry2, curry3
+└── __test__/                 # 185 tests
+```
+
+---
+
+## Exam Checklist
+
+✅ **Functional Programming**: Stateless computation, immutable data  
+✅ **Purity**: All game logic is pure, deterministic  
+✅ **Immutability**: readonly types, no mutations  
+✅ **Higher-Order Functions**: map, filter, reduce, flatMap, play(f, game)  
+✅ **Pipelining**: pipe utility, array method chaining  
+✅ **Currying**: curry2/curry3 helpers, partial application  
+✅ **Persistent Data**: Structural sharing via spread operator  
+✅ **Lazy Evaluation**: Single-pass transformations (score calculation)  
+
+---
+
+## Quick Q&A
+
+**Q: What makes Assignment 4 functional?**  
+A: Immutable data, pure functions, higher-order functions for composition, no side effects inside logic.
+
+**Q: Why readonly on all types?**  
+A: TypeScript compiler enforces immutability - prevents mutations at compile time.
+
+**Q: How do you update immutable data?**  
+A: Spread operator for shallow copy: `{ ...round, field: newValue }`
+
+**Q: Why curry?**  
+A: Partial application - fix some args, get function waiting for rest. Reuse across different data.
+
+**Q: What's the benefit of pure functions?**  
+A: Easy to test (no mocks), predictable, composable, parallelizable.
