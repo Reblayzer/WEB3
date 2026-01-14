@@ -1,30 +1,18 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 import * as Uno from 'domain/src/model/uno'
-
-type RoomSummary = { id: string; players: string[]; awaiting: number }
+import type { RoomSummary } from '../../types/serverTypes'
+import { sanitizeGame } from '../../utils/gameUtils'
 
 type UnoState = {
   game: Uno.Game
-  playerIndex?: number
+  playerIndex: number | undefined
   connected: boolean
-  roomId?: string
+  roomId: string | undefined
   rooms: RoomSummary[]
-  playerName?: string
+  playerName: string | undefined
 }
 
 const defaultPlayers = ['Alice', 'Bob', 'Cara', 'Dan']
-
-const sanitizeGame = (game: Uno.Game): Uno.Game => {
-  const { randomizer, shuffler, currentRound, ...rest } = game as any
-  const cleanRound = currentRound
-    ? ({
-        ...currentRound,
-        shuffler: undefined,
-        randomizer: undefined,
-      } as any)
-    : undefined
-  return { ...(rest as Uno.Game), currentRound: cleanRound }
-}
 
 const initialState: UnoState = {
   game: sanitizeGame(Uno.createGame({ players: defaultPlayers, targetScore: 200 })),
@@ -35,12 +23,16 @@ const initialState: UnoState = {
   playerName: undefined,
 }
 
+/**
+ * Redux slice for UNO game state
+ * Manages game state, connection status, room info, and player data
+ */
 const slice = createSlice({
   name: 'uno',
   initialState,
   reducers: {
-    setGame(state, action: PayloadAction<any>) {
-      state.game = sanitizeGame(action.payload as Uno.Game)
+    setGame(state, action: PayloadAction<Uno.Game>) {
+      state.game = action.payload as any
     },
     setPlayerIndex(state, action: PayloadAction<number | undefined>) {
       state.playerIndex = action.payload
@@ -57,6 +49,9 @@ const slice = createSlice({
     setConnected(state, action: PayloadAction<boolean>) {
       state.connected = action.payload
     },
+    /**
+     * Reset state when disconnected from server
+     */
     setDisconnected(state) {
       state.connected = false
       state.roomId = undefined
@@ -67,4 +62,6 @@ const slice = createSlice({
 })
 
 export const { setGame, setPlayerIndex, setRoomId, setRooms, setConnected, setDisconnected, setPlayerName } = slice.actions
+
 export default slice.reducer
+

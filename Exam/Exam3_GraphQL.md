@@ -4,6 +4,14 @@
 
 ---
 
+## What This Assignment Is About (Big Picture)
+
+This assignment focuses on **typed communication between client and server, including real-time updates**. You learn how GraphQL enforces an API contract through schemas, how resolvers implement server logic, and how subscriptions enable real-time data flow using the Pub/Sub pattern. The emphasis is on type safety across the network boundary and efficient, bidirectional communication.
+
+**Core Focus:** GraphQL schema design, resolver implementation, Apollo Client integration, WebSocket subscriptions, and runtime validation with Zod.
+
+---
+
 ## Key Idea
 
 **GraphQL lets the client request exactly the data it needs, while the server enforces a typed contract. The server validates every input at runtime, and real-time features use WebSocket subscriptions to push updates efficiently.**

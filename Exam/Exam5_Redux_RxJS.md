@@ -1,462 +1,724 @@
-# Exam 5: Redux and RxJS
+# Exam 5: Redux & RxJS - Assignment 5
 
-> **Exam Topics:** one-way data flow, reducers, slices, thunks, observables, subjects, pipes and operators, merge vs concat
-
----
-
-# Redux
-
-## 1. One-Way Data Flow
-
-### What is it?
-One-way data flow is the core pattern of Redux. Data moves in a single direction through your application: from actions to reducers to the store to the view. The view never directly modifies the store - it dispatches actions that describe what happened, and reducers decide how the state changes.
-
-### Why does it matter?
-This pattern makes state changes predictable and traceable. Every change goes through the same path, so you can log all actions and see exactly how state evolved. This enables powerful debugging tools like time-travel debugging, where you can step back through previous states.
-
-```
-User clicks -> dispatch(action) -> reducer -> new state -> view re-renders
-
-+---------+  dispatch   +--------+   +---------+
-|  VIEW   | ----------> | ACTION | -> | REDUCER |
-+---------+             +--------+   +----+----+
-     ^                                    |
-     |          +-------+                 |
-     +--------- | STORE | <---------------+
-                +-------+
-```
-
-### The Flow Steps
-1. User interacts with the view (clicks a button)
-2. View dispatches an action (an object describing what happened)
-3. Reducer receives current state and action, returns new state
-4. Store updates with the new state
-5. View re-renders with the updated state
+**Core Goal:** Predictable state changes and event-driven data flows.
 
 ---
 
-## 2. Reducers
+## One-Way Data Flow
 
-### What are they?
-A reducer is a pure function that takes the current state and an action, then returns the new state. The name comes from the array `reduce` method - it "reduces" a sequence of actions into a single state. Reducers are the only place where state changes happen.
+**Concept:** State flows in a single direction: action → reducer → new state → view. The view never directly modifies state - it dispatches actions describing what happened, and reducers compute the new state. This makes state changes predictable and traceable.
 
-### Why must they be pure?
-Reducers must be pure (same input = same output, no side effects) so that state changes are predictable. If a reducer had side effects or was non-deterministic, you couldn't reliably replay actions or debug state changes. The predictability is what enables Redux's powerful dev tools.
+**The Flow:**
+```
+User clicks → dispatch(action) → reducer → new state → view re-renders
 
-```ts
-// Reducer signature
-(state: State, action: Action) => State
+VIEW → ACTION → REDUCER → STORE → VIEW (loop)
 ```
 
-### Reducer Rules
-1. **Pure**: No side effects like API calls or random values
-2. **Immutable**: Never modify state directly, always return a new object
-3. **Deterministic**: Same inputs must always produce same outputs
+**Why it matters:**
+- **Predictable**: Every state change goes through the same path
+- **Traceable**: Log all actions to see exactly how state evolved
+- **Debuggable**: Time-travel debugging - step back through previous states
+- **Testable**: Dispatch action, check new state
 
-### Basic Reducer
+**Assignment 5 Example:**
 ```ts
+// client/src/views/GamePlay.tsx - User plays a card in the view
+export default function GamePlayView() {
+  const gameState = useGameState();  // Custom hook gets state from Redux
+  const { send } = useServerConnection();  // Custom hook for WebSocket
+  const { handleCardClick } = useGameActions(send, gameState.round, gameState.canAct);
+
+  // User clicks card → dispatch through custom hook
+  return <HandCard onClick={() => handleCardClick(cardIndex, card)} />;
+}
+
+// client/src/hooks/useGameActions.ts - Action handler
+export function useGameActions(send, round, canAct) {
+  const handleCardClick = useCallback((index: number, card: Card) => {
+    if (!round || !canAct) return;
+    send({ type: 'play', index });  // Send to server via WebSocket
+  }, [round, canAct, send]);
+  
+  return { handleCardClick };
+}
+
+// client/src/features/uno/unoSlice.ts - Reducer handles server response
+reducers: {
+  setGame: (state, action: PayloadAction<Game>) => {
+    state.game = action.payload;  // Update game state from server
+  }
+}
+
+// Store updates, view re-renders with new game state
+const { game } = useSelector((state: RootState) => state.uno);
+```
+
+---
+
+## Reducers
+
+**Concept:** Reducers are pure functions that compute new state based on the current state and an action: `(state, action) => newState`. They're the only place where state changes happen in Redux.
+
+**Reducer Rules:**
+1. **Pure**: No side effects (no API calls, no random values, no Date.now())
+2. **Immutable**: Never modify state directly - always return a new object
+3. **Deterministic**: Same inputs always produce same output
+
+**Why pure?**
+- **Predictable**: State changes are deterministic and traceable
+- **Testable**: No mocks needed - just pass state + action, verify new state
+- **Time-travel**: Can replay actions to recreate any state
+- **Debuggable**: Can log every state change
+
+**Assignment 5 Example:**
+```ts
+// client/src/features/uno/unoSlice.ts
+// Redux Toolkit uses Immer internally - looks like mutation but creates new state
+const unoSlice = createSlice({
+  name: 'uno',
+  initialState: {
+    game: sanitizeGame(Uno.createGame({ players: ['Alice', 'Bob'], targetScore: 200 })),
+    playerIndex: undefined,
+    connected: false,
+    roomId: undefined,
+    rooms: [],
+    playerName: undefined
+  },
+  reducers: {
+    setGame: (state, action: PayloadAction<Game>) => {
+      state.game = action.payload as any;  // Immer makes this immutable
+    },
+    setPlayerIndex: (state, action: PayloadAction<number | undefined>) => {
+      state.playerIndex = action.payload;
+    },
+    setConnected: (state, action: PayloadAction<boolean>) => {
+      state.connected = action.payload;  // Immer handles immutability
+    },
+    setRoomId: (state, action: PayloadAction<string | undefined>) => {
+      state.roomId = action.payload;
+    },
+    setRooms: (state, action: PayloadAction<RoomSummary[]>) => {
+      state.rooms = action.payload;
+    },
+    setPlayerName: (state, action: PayloadAction<string | undefined>) => {
+      state.playerName = action.payload;
+    },
+    setDisconnected: (state) => {
+      state.connected = false;
+    }
+  }
+});
+
+// Without Immer (manual immutability):
 function counterReducer(state = { count: 0 }, action) {
   switch (action.type) {
     case 'INCREMENT':
-      return { ...state, count: state.count + 1 }   // New object!
-    case 'ADD':
-      return { ...state, count: state.count + action.payload }
+      return { ...state, count: state.count + 1 };  // New object
     default:
-      return state  // Return unchanged state for unknown actions
-  }
-}
-```
-
-### Redux Toolkit with Immer
-Redux Toolkit uses Immer internally, which lets you write code that looks like mutations but actually produces immutable updates. This makes reducers much easier to write.
-
-```ts
-reducers: {
-  increment: (state) => {
-    state.count += 1  // Looks like mutation, but Immer makes it immutable
-  },
-  add: (state, action) => {
-    state.count += action.payload
+      return state;
   }
 }
 ```
 
 ---
 
-## 3. Slices
+## Slices
 
-### What are they?
-A slice is a Redux Toolkit concept that bundles related state, reducers, and auto-generated action creators together. Instead of writing actions and reducers separately, you define them in one place. The name "slice" reflects that it's a slice of your overall Redux state.
+**Concept:** A slice bundles related state, reducers, and auto-generated action creators together in one place. Instead of writing actions and reducers separately, you define them together. Redux Toolkit generates action creators automatically.
 
-### Why use them?
-Slices reduce boilerplate dramatically. You don't need to define action type constants or write action creator functions - Redux Toolkit generates them automatically. This makes Redux code much more concise and less error-prone.
+**Why slices?**
+- **Less boilerplate**: No manual action type constants or action creator functions
+- **Co-located**: State, reducers, and actions in one file
+- **Type-safe**: TypeScript knows action payload types
+- **Auto-generated actions**: `createSlice` generates action creators automatically
 
+**Assignment 5 Example:**
 ```ts
+// client/src/features/uno/unoSlice.ts
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+
 const unoSlice = createSlice({
-  name: 'uno',  // Prefix for action types: 'uno/setHand', 'uno/cardPlayed'
-  initialState: { hand: [], playerInTurn: 0 },
+  name: 'uno',  // Prefix for action types: 'uno/setGame', 'uno/cardPlayed'
+  
+  initialState: {
+    game: null as Game | null,
+    playerIndex: undefined as number | undefined,
+    roomId: undefined as string | undefined,
+    rooms: [] as RoomInfo[],
+    connected: false,
+    playerName: ''
+  },
+  
   reducers: {
-    setHand: (state, action: PayloadAction<Card[]>) => {
-      state.hand = action.payload
+    setGame: (state, action: PayloadAction<Game>) => {
+      state.game = action.payload;
     },
-    cardPlayed: (state, action: PayloadAction<{ cardIndex: number }>) => {
-      state.hand = state.hand.filter((_, i) => i !== action.payload.cardIndex)
+    setPlayerIndex: (state, action: PayloadAction<number>) => {
+      state.playerIndex = action.payload;
+    },
+    setRoomId: (state, action: PayloadAction<string>) => {
+      state.roomId = action.payload;
+    },
+    setRooms: (state, action: PayloadAction<RoomInfo[]>) => {
+      state.rooms = action.payload;
+    },
+    setConnected: (state) => {
+      state.connected = true;
+    },
+    setDisconnected: (state) => {
+      state.connected = false;
+    },
+    setPlayerName: (state, action: PayloadAction<string>) => {
+      state.playerName = action.payload;
     }
   }
-})
+});
 
 // Auto-generated action creators
-export const { setHand, cardPlayed } = unoSlice.actions
-export default unoSlice.reducer
-```
+export const { 
+  setGame, 
+  setPlayerIndex, 
+  setRoomId, 
+  setRooms, 
+  setConnected, 
+  setDisconnected, 
+  setPlayerName 
+} = unoSlice.actions;
 
-### Using in Components
-```ts
-const hand = useSelector(state => state.uno.hand)  // Read from store
-const dispatch = useDispatch()
-dispatch(cardPlayed({ cardIndex: 2 }))              // Dispatch action
-```
+export default unoSlice.reducer;
 
----
-
-## 4. Thunks
-
-### What are they?
-A thunk is a function that wraps async logic and can dispatch multiple actions. Since reducers must be pure, they can't do async operations like API calls. Thunks provide a way to handle side effects while keeping reducers pure.
-
-### Why use them?
-Real applications need to fetch data, send requests, and handle async operations. Thunks let you write this logic in a way that integrates cleanly with Redux. You can dispatch actions before, during, and after async operations.
-
-### Basic Thunk
-A thunk is a function that returns a function. The inner function receives `dispatch` and `getState`, giving it full access to dispatch actions and read current state.
-
-```ts
-const playCardThunk = (cardIndex: number) => {
-  return async (dispatch, getState) => {
-    const { gameId } = getState().uno
-
-    // Optimistic update - update UI immediately
-    dispatch(cardPlayed({ cardIndex }))
-
-    try {
-      await api.playCard(gameId, cardIndex)
-    } catch (error) {
-      // Rollback on error
-      dispatch(setError(error.message))
-    }
-  }
+// Usage in views with custom hooks
+// client/src/views/GamePlay.tsx
+export default function GamePlayView() {
+  const gameState = useGameState();  // Custom hook encapsulates useSelector
+  const { send } = useServerConnection();
+  const { handleCardClick } = useGameActions(send, gameState.round, gameState.canAct);
+  
+  return (
+    <div className="game-play-container">
+      <GameHeader isMyTurn={gameState.isMyTurn} />
+      <PlayersList players={gameState.round?.players} />
+    </div>
+  );
 }
 
-// Usage
-dispatch(playCardThunk(2))
-```
-
-### createAsyncThunk
-Redux Toolkit's `createAsyncThunk` handles the common pattern of pending/fulfilled/rejected states automatically.
-
-```ts
-const fetchGame = createAsyncThunk('uno/fetchGame',
-  async (gameId: string, { rejectWithValue }) => {
-    try {
-      const response = await fetch(`/api/games/${gameId}`)
-      return response.json()  // Becomes action.payload
-    } catch (error) {
-      return rejectWithValue(error.message)
-    }
-  }
-)
-
-// Handle all three states in the slice
-extraReducers: (builder) => {
-  builder
-    .addCase(fetchGame.pending, (state) => { state.loading = true })
-    .addCase(fetchGame.fulfilled, (state, action) => {
-      state.loading = false
-      state.game = action.payload
-    })
-    .addCase(fetchGame.rejected, (state, action) => {
-      state.loading = false
-      state.error = action.payload
-    })
+// client/src/hooks/useGameState.ts - Encapsulates Redux selectors
+export function useGameState() {
+  const { game, playerIndex, connected, roomId, rooms } = useSelector(
+    (state: RootState) => state.uno
+  );
+  const round = game.currentRound;
+  
+  // Derived state computed here
+  const currentPlayer = round?.playerInTurn ?? -1;
+  const isMyTurn = playerIndex === currentPlayer;
+  
+  return { game, round, playerIndex, connected, roomId, rooms, isMyTurn };
 }
 ```
 
 ---
 
-# RxJS
+## Thunks (Not Used in Assignment 5)
 
-## 5. Observables
+**Concept:** Thunks are functions that return functions, allowing async logic in Redux. However, **Assignment 5 uses RxJS for async operations instead of thunks**.
 
-### What are they?
-An Observable is a stream of values over time. Unlike a Promise which resolves once, an Observable can emit multiple values. You subscribe to an Observable to receive values as they arrive. Observables are lazy - they don't start emitting until you subscribe.
+**Why Assignment 5 uses RxJS instead:**
+- **Streaming**: WebSocket requires continuous bidirectional communication
+- **Operators**: RxJS provides powerful stream transformations (filter, map, debounce)
+- **Cancellation**: Easy to unsubscribe and clean up connections
+- **Better fit**: WebSocket is naturally a stream, not a one-time async operation
 
-### Why use them?
-Observables excel at handling sequences of events over time: user input, WebSocket messages, timers, etc. They provide a unified way to work with async data streams and powerful operators to transform and combine them.
-
+**Assignment 5 Example (RxJS approach):**
 ```ts
-const numbers$ = new Observable(subscriber => {
-  subscriber.next(1)
-  subscriber.next(2)
-  setTimeout(() => {
-    subscriber.next(3)
-    subscriber.complete()
-  }, 1000)
-})
+// client/src/rx/serverBridge.ts
+import { webSocket } from 'rxjs/webSocket';
+import { filter, tap, catchError } from 'rxjs/operators';
 
-numbers$.subscribe({
-  next: (v) => console.log(v),     // Called for each value
-  error: (e) => console.error(e),  // Called on error
-  complete: () => console.log('done')  // Called when stream ends
-})
-```
+export function connectServerStream(dispatch: AppDispatch, wsUrl: string): ServerConnection {
+  const ws$ = webSocket<IncomingMessage>({
+    url: wsUrl,
+    openObserver: {
+      next: () => {
+        console.log('WebSocket connected');
+        dispatch(setConnected(true));
+      }
+    },
+    closeObserver: {
+      next: () => {
+        console.log('WebSocket closed');
+        dispatch(setDisconnected());
+      }
+    }
+  });
 
-### Observable vs Promise
+  // Subscribe to WebSocket Observable - dispatches Redux actions
+  const subscription = ws$.pipe(
+    filter((msg): msg is IncomingMessage => msg !== null),
+    tap((msg) => console.log('Received:', msg.type)),
+    catchError((error) => {
+      console.error('WebSocket error:', error);
+      dispatch(setDisconnected());
+      throw error;
+    })
+  ).subscribe({
+    next: (msg) => handleIncomingMessage(msg, dispatch),
+    error: (err) => console.error('WebSocket error:', err)
+  });
 
-| Observable | Promise |
-|------------|---------|
-| Multiple values | Single value |
-| Lazy (starts on subscribe) | Eager (starts immediately) |
-| Cancellable (unsubscribe) | Not cancellable |
-| Rich operators | Limited (then, catch) |
+  // Helper to handle different message types
+  function handleIncomingMessage(msg: IncomingMessage, dispatch: AppDispatch) {
+    if (msg.type === 'game-state') {
+      dispatch(setGame(sanitizeGame(msg.game)));
+      dispatch(setPlayerIndex(msg.playerIndex));
+    }
+    if (msg.type === 'rooms') {
+      dispatch(setRooms(msg.rooms));
+    }
+    if (msg.type === 'joined') {
+      dispatch(setRoomId(msg.roomId));
+    }
+  }
 
-### Creating Observables
-```ts
-of(1, 2, 3)                  // Emit these values then complete
-from([1, 2, 3])              // From array
-interval(1000)               // Emit 0, 1, 2... every second
-fromEvent(btn, 'click')      // From DOM events
-webSocket('ws://...')        // From WebSocket
-```
+  return {
+    send: (message: OutgoingMessage) => ws$.next(message),
+    disconnect: () => subscription.unsubscribe(),
+    isConnected: !subscription.closed
+  };
+}
 
----
+// client/src/hooks/useServerConnection.ts
+// Custom hook wraps RxJS connection
+export function useServerConnection() {
+  const dispatch = useDispatch<AppDispatch>();
+  const [connection, setConnection] = useState<ServerConnection | null>(null);
 
-## 6. Subjects
+  useEffect(() => {
+    const conn = connectServerStream(dispatch, 'ws://localhost:3001');
+    setConnection(conn);
+    
+    return () => conn.disconnect();  // Cleanup
+  }, [dispatch]);
 
-### What are they?
-A Subject is both an Observable and an Observer - it can receive values and broadcast them to subscribers. Unlike regular Observables that produce values internally, Subjects let you push values from outside. This makes them useful for multicasting - multiple subscribers share the same execution.
-
-### Types of Subjects
-
-**Subject** - Basic subject. Values are only received by subscribers who subscribed before the value was emitted.
-```ts
-const subject = new Subject<number>()
-subject.subscribe(v => console.log('A:', v))
-subject.next(1)  // A: 1
-subject.next(2)  // A: 2
-```
-
-**BehaviorSubject** - Has a "current value" concept. New subscribers immediately receive the current value, then subsequent values. Useful when you always need the latest state.
-```ts
-const subject = new BehaviorSubject(0)  // Initial value required
-subject.getValue()  // 0
-subject.subscribe(v => console.log(v))  // Immediately logs: 0
-subject.next(1)  // logs: 1
-```
-
-**ReplaySubject** - Replays a buffer of previous values to new subscribers. Useful when subscribers might miss values.
-```ts
-const subject = new ReplaySubject(2)  // Buffer last 2 values
-subject.next(1)
-subject.next(2)
-subject.next(3)
-subject.subscribe(v => console.log(v))  // Logs: 2, 3 (replays last 2)
-```
-
----
-
-## 7. Pipes and Operators
-
-### What are they?
-Operators are functions that transform Observables. You chain them using the `pipe()` method. Each operator takes an Observable, transforms it somehow, and returns a new Observable. This lets you build complex data transformation pipelines.
-
-### Why use them?
-Operators provide a declarative way to handle common async patterns: filtering, transforming, combining, error handling, etc. Instead of writing imperative code with callbacks, you describe the transformations you want.
-
-```ts
-of(1, 2, 3, 4, 5).pipe(
-  filter(x => x % 2 === 0),      // Keep even: 2, 4
-  map(x => x * 10),               // Transform: 20, 40
-  tap(x => console.log('Got:', x))  // Side effect for debugging
-).subscribe(console.log)
-```
-
-### Common Operators
-
-**Transformation:**
-```ts
-map(x => x * 2)              // Transform each value
-scan((acc, x) => acc + x, 0) // Accumulate like reduce, but emit each step
-```
-
-**Filtering:**
-```ts
-filter(x => x > 10)          // Keep values matching condition
-take(5)                      // Take first 5 values, then complete
-takeUntil(stop$)             // Take until another Observable emits
-debounceTime(300)            // Wait for 300ms of silence before emitting
-distinctUntilChanged()       // Skip consecutive duplicate values
-```
-
-**Error Handling:**
-```ts
-retry(3)                         // Retry up to 3 times on error
-catchError(err => of(fallback))  // Catch error, return fallback Observable
+  return {
+    send: connection?.send || (() => {}),
+    isConnected: connection?.isConnected || false
+  };
+}
 ```
 
 ---
 
-## 8. Merge vs Concat
+## Reactive Programming
 
-### What's the difference?
-Both combine multiple Observables into one, but they handle timing differently. `merge` subscribes to all sources simultaneously and emits values as they arrive from any source. `concat` waits for each source to complete before subscribing to the next.
+**Concept:** Reactive programming models data as streams over time. Instead of handling individual events, you work with streams of events that flow through time. You describe transformations on the stream, and the system applies them as values arrive.
 
-### merge - Parallel, Interleaved
-Merge subscribes to all Observables at once. Values interleave based on when they're emitted. Use merge when you want to handle multiple streams in parallel and don't care about order.
+**Key ideas:**
+- **Streams over time**: Data arrives continuously, not as one-time values
+- **Declarative**: Describe WHAT transformations to apply, not HOW to apply them
+- **Composable**: Chain operators to build complex transformations
+- **Push-based**: Data is pushed to subscribers when available (vs pull-based polling)
 
+**Why reactive?**
+- **Event-driven**: Perfect for UI events, WebSocket messages, timers
+- **Unified model**: Same API for clicks, HTTP, WebSockets, intervals
+- **Powerful operators**: Transform, filter, combine streams easily
+- **Cancellable**: Unsubscribe to stop receiving values
+
+**Assignment 5 Example:**
 ```ts
-const fast$ = interval(500).pipe(take(3), map(x => 'fast ' + x))
-const slow$ = interval(800).pipe(take(3), map(x => 'slow ' + x))
+// client/src/rx/serverBridge.ts
+import { webSocket } from 'rxjs/webSocket';
 
-merge(fast$, slow$).subscribe(console.log)
-// fast 0  (500ms)
-// slow 0  (800ms)
-// fast 1  (1000ms)
-// fast 2  (1500ms)
-// slow 1  (1600ms)
-// slow 2  (2400ms)
-```
+// WebSocket as Observable stream
+const ws$ = webSocket<IncomingMessage>('ws://localhost:3001');
 
-### concat - Sequential, Ordered
-Concat waits for the first Observable to complete before subscribing to the second. Values come out in source order. Use concat when order matters or when you need to process things sequentially.
+// Subscribe to stream - receives values over time
+ws$.subscribe({
+  next: (msg) => {
+    // Handle each message as it arrives
+    if (msg.type === 'GAME_STATE') {
+      dispatch(setGame(msg.game));
+    }
+    if (msg.type === 'ROOMS_LIST') {
+      dispatch(setRooms(msg.rooms));
+    }
+  },
+  error: (err) => console.error('WebSocket error:', err),
+  complete: () => console.log('WebSocket closed')
+});
 
-```ts
-const first$ = of('a', 'b', 'c')
-const second$ = of('x', 'y', 'z')
+// Send message through stream
+ws$.next({ type: 'JOIN_ROOM', roomId: 'abc123' });
 
-concat(first$, second$).subscribe(console.log)
-// a, b, c (first completes)
-// x, y, z (then second)
-```
-
-### Comparison
-
-| merge | concat |
-|-------|--------|
-| Subscribes to all at once | One at a time |
-| Values interleave | Values in order |
-| Use for parallel operations | Use for sequential operations |
-
-### Other Combination Operators
-```ts
-combineLatest([a$, b$])  // Emit array of latest from each, when any emits
-zip(a$, b$)              // Pair values by index: [a1,b1], [a2,b2]...
-forkJoin([a$, b$])       // Wait for all to complete, emit array of final values
+// Stream-based thinking: UI events as streams
+const clicks$ = fromEvent(button, 'click');
+const searchInput$ = fromEvent(input, 'input').pipe(
+  map(e => e.target.value),
+  debounceTime(300),  // Wait for 300ms pause
+  distinctUntilChanged()  // Skip duplicates
+);
 ```
 
 ---
 
-## 9. Higher-Order Mapping Operators
+## Observables and Subjects
 
-### What are they?
-When your `map` function returns an Observable, you get nested Observables. Higher-order mapping operators flatten these automatically. Each handles the inner Observables differently.
+**Concept:** 
+- **Observable**: A stream of values over time. Unlike Promises (one value), Observables emit multiple values. They're lazy - don't start until you subscribe.
+- **Subject**: Both Observable and Observer - can receive values from outside and broadcast to multiple subscribers (multicasting).
 
-### mergeMap (flatMap)
-Subscribes to all inner Observables in parallel. Values interleave. Use when order doesn't matter and you want maximum concurrency.
+**Observable characteristics:**
+- **Multiple values**: Can emit 0, 1, or many values over time
+- **Lazy**: Only starts when you subscribe
+- **Cancellable**: Unsubscribe to stop receiving values
+- **Powerful operators**: Transform, filter, combine streams
 
+**Subject types:**
+- **Subject**: Values only to current subscribers
+- **BehaviorSubject**: New subscribers get current value immediately
+- **ReplaySubject**: New subscribers get buffered previous values
+
+**Assignment 5 Example:**
 ```ts
-clicks$.pipe(
-  mergeMap(click => fetchData(click.id))  // Multiple fetches run in parallel
-)
+// client/src/rx/serverBridge.ts
+import { webSocket, WebSocketSubject } from 'rxjs/webSocket';
+
+// WebSocket as Observable - emits messages over time
+const ws$: WebSocketSubject<IncomingMessage> = webSocket('ws://localhost:3001');
+
+// Subscribe to Observable - handle each message as it arrives
+ws$.subscribe({
+  next: (msg: IncomingMessage) => {
+    // Handle message types
+    if (msg.type === 'GAME_STATE') {
+      dispatch(setGame(msg.game));
+    }
+    if (msg.type === 'PLAYER_INDEX') {
+      dispatch(setPlayerIndex(msg.playerIndex));
+    }
+    if (msg.type === 'ROOMS_LIST') {
+      dispatch(setRooms(msg.rooms));
+    }
+    if (msg.type === 'ROOM_CREATED') {
+      dispatch(setRoomId(msg.roomId));
+    }
+    if (msg.type === 'ROOM_JOINED') {
+      dispatch(setRoomId(msg.roomId));
+    }
+  },
+  error: (err) => {
+    console.error('WebSocket error:', err);
+    dispatch(setDisconnected());
+  },
+  complete: () => {
+    console.log('WebSocket connection closed');
+    dispatch(setDisconnected());
+  }
+});
+
+// WebSocketSubject is also a Subject - can send values
+ws$.next({ type: 'JOIN_ROOM', roomId: 'abc123' });  // Send message to server
+ws$.next({ type: 'PLAY_CARD', cardIndex: 2 });
+
+// Cleanup - unsubscribe to prevent memory leaks
+const subscription = ws$.subscribe(...);
+subscription.unsubscribe();  // Close WebSocket connection
+
+// Observable vs Promise comparison
+const promise = fetch('/api/data');  // Eager - starts immediately, 1 value
+const observable = fromEvent(button, 'click');  // Lazy - starts on subscribe, many values
 ```
 
-### concatMap
-Waits for each inner Observable to complete before subscribing to the next. Values stay in order. Use when order matters.
+---
 
+## Pipes and Operators
+
+**Concept:** Operators transform Observables. Chain them with `pipe()` to build transformation pipelines. Each operator takes an Observable, transforms it, returns a new Observable.
+
+**Why operators?**
+- **Declarative**: Describe WHAT transformations, not HOW to implement them
+- **Composable**: Chain many operators together
+- **Reusable**: Same operators work with any Observable
+
+**Common patterns:**
+- **Transformation**: `map`, `scan`
+- **Filtering**: `filter`, `take`, `debounceTime`, `distinctUntilChanged`
+- **Combination**: `merge` (parallel), `concat` (sequential), `combineLatest`, `zip`
+- **Error handling**: `retry`, `catchError`
+
+**Assignment 5 Example:**
 ```ts
-ids$.pipe(
-  concatMap(id => saveToServer(id))  // Saves happen one at a time, in order
-)
-```
+// client/src/rx/serverBridge.ts - Real usage
+import { webSocket } from 'rxjs/webSocket';
 
-### switchMap
-Cancels the previous inner Observable when a new one starts. Only the latest matters. Use for search/autocomplete where old results are irrelevant.
+const ws$ = webSocket('ws://localhost:3001');
 
-```ts
+// Simple subscription - no operators needed
+ws$.subscribe({
+  next: (msg) => handleMessage(msg),
+  error: (err) => console.error(err)
+});
+
+// More complex example with operators (if needed):
+import { filter, map, debounceTime, distinctUntilChanged } from 'rxjs/operators';
+
+// Filter only GAME_STATE messages
+ws$.pipe(
+  filter(msg => msg.type === 'GAME_STATE'),
+  map(msg => msg.game)
+).subscribe(game => dispatch(setGame(game)));
+
+// Search input example - debounce and filter duplicates
 searchInput$.pipe(
-  debounceTime(300),
-  switchMap(query => searchAPI(query))  // Cancels previous search when new query comes
-)
+  map(e => e.target.value),
+  debounceTime(300),  // Wait 300ms after typing stops
+  distinctUntilChanged()  // Skip if same as previous
+).subscribe(query => searchAPI(query));
+
+// merge vs concat
+import { merge, concat, of, interval } from 'rxjs';
+
+// merge - parallel, interleaved output
+const fast$ = interval(500).pipe(take(2));
+const slow$ = interval(800).pipe(take(2));
+merge(fast$, slow$).subscribe(console.log);
+// Output: fast0 (500ms), slow0 (800ms), fast1 (1000ms), slow1 (1600ms)
+
+// concat - sequential, ordered output
+concat(of('a', 'b'), of('x', 'y')).subscribe(console.log);
+// Output: a, b (first completes), then x, y
 ```
 
 ---
 
-## 10. Subscription Management
+## Redux + RxJS Integration
 
-### Why it matters
-Subscriptions that aren't cleaned up cause memory leaks. Always unsubscribe when you're done, especially in components that mount/unmount.
+**Concept:** Assignment 5 combines Redux and RxJS for complementary purposes:
 
-```ts
-// Store subscription reference
-const subscription = observable$.subscribe(value => console.log(value))
+- **Redux**: Manages application state (game, players, room info)
+- **RxJS**: Handles WebSocket stream (messages over time)
+- **Integration**: RxJS dispatches Redux actions when messages arrive
+- **Shared Types**: Protocol types centralized in `domain/src/types/messages.ts`
 
-// Clean up when done
-subscription.unsubscribe()
+**Why this combination?**
+- **Predictable state**: Redux ensures state changes are traceable
+- **Stream processing**: RxJS handles continuous WebSocket events
+- **Time-travel debugging**: Redux DevTools work with predictable state changes
+- **Separation of concerns**: State management vs event handling
+- **Type safety**: Centralized protocol types ensure client/server alignment
 
-// In Vue/React - clean up on unmount
-onUnmounted(() => {
-  subscription.unsubscribe()
-})
+---
+
+## File Structure
+
 ```
-
-### takeUntil Pattern
-A common pattern is using `takeUntil` with a destroy signal. When the signal emits, the subscription automatically completes.
-
-```ts
-const destroy$ = new Subject<void>()
-
-observable$.pipe(
-  takeUntil(destroy$)
-).subscribe(...)
-
-// On component destroy
-destroy$.next()
-destroy$.complete()
+Assignment5/
+├── client/
+│   └── src/
+│       ├── App.tsx                     # Layout wrapper with <Outlet />
+│       ├── main.tsx                    # RouterProvider with Redux Provider
+│       ├── store.ts                    # configureStore with uno reducer
+│       ├── router/
+│       │   └── index.tsx              # createBrowserRouter with routes
+│       ├── views/                     # Page-level components
+│       │   ├── Login.tsx              # Login with useServerConnection
+│       │   ├── Lobby.tsx              # Room list with useSelector
+│       │   ├── GameRouter.tsx         # Game state router
+│       │   ├── GamePlay.tsx           # Active gameplay
+│       │   ├── GameWaiting.tsx        # Waiting room
+│       │   └── GameOver.tsx           # Results screen
+│       ├── components/                # Reusable UI
+│       │   ├── ColorChooser.tsx
+│       │   ├── GameBoard.tsx
+│       │   ├── GameHeader.tsx
+│       │   ├── HandCard.tsx
+│       │   ├── PlayerCard.tsx
+│       │   ├── PlayersList.tsx
+│       │   └── UnoCard.tsx
+│       ├── hooks/                     # Custom React hooks
+│       │   ├── useServerConnection.ts # WebSocket lifecycle
+│       │   ├── useGameState.ts        # Derived state from Redux
+│       │   └── useGameActions.ts      # Game action handlers
+│       ├── features/
+│       │   └── uno/
+│       │       └── unoSlice.ts        # createSlice with reducers
+│       ├── rx/
+│       │   └── serverBridge.ts        # WebSocket Observable
+│       ├── types/
+│       │   └── serverTypes.ts         # Re-exports from domain
+│       └── utils/
+│           ├── gameUtils.ts
+│           └── colorUtils.ts
+├── server/
+│   └── src/
+│       ├── index.ts                   # WebSocket server setup (45 lines)
+│       ├── types.ts                   # Type definitions (Room, ClientInfo)
+│       ├── utils.ts                   # Pure utilities (newId, sanitizeGame)
+│       ├── game.ts                    # Game creation logic
+│       ├── broadcast.ts               # Broadcasting functions
+│       ├── roomManager.ts             # RoomManager class (SOLID)
+│       └── messageHandler.ts          # MessageHandler class (SOLID)
+└── domain/
+    ├── src/
+    │   ├── model/                     # Functional game model (from Assignment 4)
+    │   │   ├── deck.ts
+    │   │   ├── round.ts
+    │   │   └── uno.ts
+    │   ├── types/
+    │   │   └── messages.ts            # Centralized protocol types
+    │   └── utils/
+    │       └── random_utils.ts
+    └── package.json
 ```
 
 ---
 
-## Quick Answers
+## Server Architecture (SOLID Principles)
 
-| Question | Answer |
-|----------|--------|
-| What is one-way data flow? | Data flows: Action -> Reducer -> Store -> View. Changes only happen through actions |
-| What is a reducer? | Pure function `(state, action) => newState` that calculates new state from current state and action |
-| What is a slice? | Redux Toolkit bundle of state + reducers + auto-generated actions for one feature |
-| When use thunks? | For async operations (API calls, delays) since reducers must be pure |
-| Observable vs Promise? | Observable: multiple values, lazy, cancellable. Promise: single value, eager |
-| Subject vs Observable? | Subject can both receive and emit values. Observable only emits |
-| BehaviorSubject vs Subject? | BehaviorSubject holds current value, new subscribers get it immediately |
-| merge vs concat? | merge runs parallel (interleaved output), concat runs sequential (ordered output) |
-| mergeMap vs switchMap? | mergeMap keeps all inner Observables; switchMap cancels previous when new one starts |
-| Why unsubscribe? | Prevent memory leaks - subscriptions persist until explicitly unsubscribed |
+**Refactored Structure:** Assignment 5 server follows SOLID principles with modular architecture:
+
+**Before:** 255-line monolithic `index.ts` with multiple responsibilities
+
+**After:** 7 focused modules (45-138 lines each):
+
+1. **index.ts** (45 lines) - WebSocket server setup only
+2. **types.ts** (21 lines) - Type definitions and constants
+3. **utils.ts** (17 lines) - Pure utility functions
+4. **game.ts** (26 lines) - Game creation logic
+5. **broadcast.ts** (34 lines) - Broadcasting functions (stateless)
+6. **roomManager.ts** (110 lines) - Room lifecycle management (Single Responsibility)
+7. **messageHandler.ts** (138 lines) - Message routing (Dependency Injection)
+
+**Benefits:**
+- ✅ **Single Responsibility**: Each module has one clear purpose
+- ✅ **Open/Closed**: Can extend without modifying existing code
+- ✅ **Dependency Inversion**: `MessageHandler` depends on `RoomManager` abstraction
+- ✅ **Testability**: Pure functions and injectable dependencies
+- ✅ **Maintainability**: 82% code reduction in main file
+
+**Example - RoomManager Class:**
+```ts
+// server/src/roomManager.ts
+export class RoomManager {
+  private rooms = new Map<string, Room>()
+  private clients = new Map<string, ClientInfo>()
+
+  createRoom(creator: ClientInfo, maxPlayers: number): void {
+    const room: Room = {
+      id: newId('room'),
+      game: waitingGame([creator.name]),
+      sockets: [creator],
+      maxPlayers,
+      creatorId: creator.id,
+    }
+    this.rooms.set(room.id, room)
+    broadcastRoomsList(this.rooms, this.clients)
+  }
+  
+  joinRoom(client: ClientInfo, roomId: string): void {
+    const room = this.rooms.get(roomId)
+    if (!room) {
+      client.socket.send(JSON.stringify({ 
+        type: 'error', 
+        message: 'Room not found' 
+      }))
+      return
+    }
+    room.sockets.push(client)
+    broadcastRoom(room)
+  }
+}
+```
+
+**Example - Dependency Injection:**
+```ts
+// server/src/messageHandler.ts
+export class MessageHandler {
+  constructor(private roomManager: RoomManager) {}  // Dependency injection
+
+  handleMessage(client: ClientInfo, parsed: ClientMessage): void {
+    switch (parsed.type) {
+      case 'create-room':
+        this.roomManager.createRoom(client, parsed.maxPlayers)
+        break
+      case 'join-room':
+        this.roomManager.joinRoom(client, parsed.roomId)
+        break
+    }
+  }
+}
+
+// server/src/index.ts - Composition
+const roomManager = new RoomManager()
+const messageHandler = new MessageHandler(roomManager)  // Inject dependency
+```
+
+---
+
+## Exam Checklist
+
+✅ **One-Way Data Flow**: Action → Reducer → Store → View  
+✅ **Reducers**: Pure functions `(state, action) => newState`, Immer for immutability  
+✅ **Slices**: Bundle state + reducers + auto-generated actions  
+✅ **Thunks**: Handle async operations (though Assignment 5 uses RxJS instead)  
+✅ **Reactive Programming**: Model data as streams over time  
+✅ **Observables**: Multiple values, lazy, cancellable  
+✅ **Subjects**: Observable + Observer, multicasting (WebSocketSubject)  
+✅ **Operators**: Transform streams with `pipe()`, `filter`, `map`, etc.  
+✅ **merge vs concat**: Parallel interleaved vs sequential ordered  
+
+---
+
+## Quick Q&A
+
+**Q: What is one-way data flow?**  
+A: Data flows: Action → Reducer → Store → View. Changes only happen through actions.
+
+**Q: What is a reducer?**  
+A: Pure function `(state, action) => newState` that calculates new state.
+
+**Q: What is a slice?**  
+A: Redux Toolkit bundle of state + reducers + auto-generated actions for one feature.
+
+**Q: When use thunks?**  
+A: For async operations (API calls, delays) since reducers must be pure. Assignment 5 uses RxJS instead.
+
+**Q: merge vs concat?**  
+A: merge runs parallel (interleaved output), concat runs sequential (ordered output).
+
+**Q: Why use operators?**  
+A: Transform Observable streams declaratively - filter, map, debounce, combine, etc.
+
+**Q: Why unsubscribe?**  
+A: Prevent memory leaks - subscriptions persist until explicitly unsubscribed.
 
 ---
 
 ## Where It's Applied in Assignment 5
 
-| Concept | File | Location |
-|---------|------|----------|
-| **`configureStore`** | `client/src/store.ts:1,4` | Creates Redux store with `uno` reducer |
-| **`createSlice`** | `client/src/features/uno/unoSlice.ts:38` | Defines uno slice with name, initialState, and reducers |
-| **`PayloadAction`** | `client/src/features/uno/unoSlice.ts:1,42-57` | Type annotations for all reducer action payloads |
-| **Immer Mutations** | `client/src/features/uno/unoSlice.ts:41-67` | `state.game = action.payload`, `state.connected = true` - looks like mutation but Immer handles immutability |
-| **Action Creators** | `client/src/features/uno/unoSlice.ts:69` | Exported: `setGame`, `setPlayerIndex`, `setRoomId`, `setRooms`, `setConnected`, `setDisconnected`, `setPlayerName` |
-| **`useDispatch`** | `client/src/App.tsx:2,15` | Gets dispatch function to send actions to store |
-| **`useSelector`** | `client/src/App.tsx:2,16` | Selects `game`, `playerIndex`, `connected`, `rooms`, `roomId`, `playerName` from `state.uno` |
-| **`Provider`** | `client/src/main.tsx:3,12` | Wraps app to provide Redux store to all components |
-| **`webSocket`** | `client/src/rx/serverBridge.ts:1,42` | Creates WebSocketSubject connecting to `ws://localhost:3001` |
-| **Observable `subscribe`** | `client/src/rx/serverBridge.ts:44-71` | Subscribes with `next`, `error`, and `complete` handlers |
-| **`unsubscribe`** | `client/src/rx/serverBridge.ts:76` | Cleanup to close WebSocket subscription |
-| **Subject `.next()`** | `client/src/rx/serverBridge.ts:74` | Sends OutgoingMessage to server via WebSocketSubject |
-| **Subject `.complete()`** | `client/src/rx/serverBridge.ts:77` | Completes the observable stream on disconnect |
-| **Redux + RxJS Bridge** | `client/src/rx/serverBridge.ts:44-71` | `connectServerStream` dispatches Redux actions from RxJS websocket messages |
+| Concept | File | Example |
+|---------|------|---------|
+| **configureStore** | `client/src/store.ts` | Creates Redux store with `uno` reducer |
+| **createSlice** | `client/src/features/uno/unoSlice.ts` | Defines uno slice with 7 reducers |
+| **PayloadAction** | `client/src/features/uno/unoSlice.ts` | Type annotations for action payloads |
+| **Immer** | `client/src/features/uno/unoSlice.ts` | `state.game = action.payload` - looks like mutation |
+| **useDispatch** | `client/src/hooks/useServerConnection.ts` | Dispatches actions from WebSocket messages |
+| **useSelector** | `client/src/hooks/useGameState.ts` | Selects `game`, `playerIndex`, `connected`, `rooms` |
+| **Provider** | `client/src/main.tsx` | Wraps RouterProvider to provide Redux store |
+| **RouterProvider** | `client/src/main.tsx` | Uses router from `router/index.tsx` |
+| **createBrowserRouter** | `client/src/router/index.tsx` | Defines routes with nested children |
+| **Outlet** | `client/src/App.tsx` | Renders child routes in layout |
+| **Views** | `client/src/views/` | Page-level: Login, Lobby, GamePlay, GameWaiting, GameOver |
+| **Components** | `client/src/components/` | Reusable: GameBoard, PlayerCard, HandCard, UnoCard |
+| **Custom Hooks** | `client/src/hooks/` | `useServerConnection`, `useGameState`, `useGameActions` |
+| **webSocket** | `client/src/rx/serverBridge.ts` | Creates WebSocketSubject Observable |
+| **RxJS Operators** | `client/src/rx/serverBridge.ts` | `filter`, `tap`, `catchError` for stream processing |
+| **subscribe** | `client/src/rx/serverBridge.ts` | Handles `next`, `error` with dispatch calls |
+| **unsubscribe** | `client/src/hooks/useServerConnection.ts` | Cleanup in useEffect return |
+| **Subject .next()** | `client/src/rx/serverBridge.ts` | `send()` method sends messages to server |
+| **Redux + RxJS** | `client/src/rx/serverBridge.ts` | `handleIncomingMessage()` dispatches Redux actions |
+| **Centralized Types** | `domain/src/types/messages.ts` | `ClientMessage`, `ServerMessage`, `RoomSummary` |
+| **SOLID Server** | `server/src/roomManager.ts` | Room lifecycle management (Single Responsibility) |
+| **SOLID Server** | `server/src/messageHandler.ts` | Message routing with dependency injection |

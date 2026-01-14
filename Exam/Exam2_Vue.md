@@ -4,6 +4,14 @@
 
 ---
 
+## What This Assignment Is About (Big Picture)
+
+This assignment is about **building a reactive client application using components, binding, and state management**. You learn how to structure a frontend where the UI automatically updates when state changes, following the **MVVM (Model-View-ViewModel)** pattern. The focus is on declarative rendering, component composition, and managing both local and global state effectively.
+
+**Core Focus:** Master reactive programming patterns, component communication (props/emits), routing, and understand when to use local vs global state management.
+
+---
+
 ## Key Idea
 
 **The UI is a declarative projection of reactive state. When state changes, Vue re-renders automatically.**

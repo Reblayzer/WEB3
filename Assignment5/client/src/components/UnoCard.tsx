@@ -23,7 +23,7 @@ const symbolFor = (card: Card) => {
     case 'WILD DRAW':
       return '+4'
     default:
-      return card.type
+      return '?'
   }
 }
 

@@ -1,7 +1,6 @@
 import { createInitialDeck, colors, type Card, type Color, pointsFor } from './deck'
 import type { Shuffler } from '../utils/random_utils'
 import { standardShuffler } from '../utils/random_utils'
-import * as _ from 'lodash'
 
 export type Direction = 'clockwise' | 'counterclockwise'
 

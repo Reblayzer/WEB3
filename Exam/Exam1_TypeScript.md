@@ -4,6 +4,14 @@
 
 ---
 
+## What This Assignment Is About (Big Picture)
+
+This assignment is about **using TypeScript's type system to model domain logic safely and avoid errors before runtime**. You learn how to express complex game rules and state as types, ensuring the compiler catches mistakes early. TypeScript helps make assumptions explicit, but remember: **types do not exist at runtime**.
+
+**Core Focus:** Leverage the type system to prevent invalid states and operations through discriminated unions, immutability, utility types, and advanced type manipulations.
+
+---
+
 ## Project Structure
 
 ```
