@@ -804,6 +804,31 @@ if (!result.success) {
 
 # Part 2: Server Implementation (High-Level)
 
+## Project Structure
+
+```
+domain/src/model/types/
+├── card-types.ts       # Card discriminated unions
+├── round-types.ts      # Round configuration & state
+├── game-types.ts       # Game configuration & memento
+└── shared-types.ts     # Shared types (GameStatus, Player, GameLogEntry, etc.)
+                        # Used by both client and server to avoid duplication
+
+server/src/
+├── types.ts            # Server-specific types (GameState, SerializedGame)
+├── resolvers.ts        # GraphQL resolvers
+├── schema.ts           # GraphQL schema definition
+├── gameManager.ts      # Game state management
+└── server.ts           # Apollo Server setup
+
+client/src/api/
+├── types.ts            # Client-specific types (Game, GameUpdate)
+├── schemas.ts          # GraphQL queries/mutations/subscriptions
+└── graphql.ts          # Apollo Client setup
+```
+
+**Key Insight:** Shared types (GameStatus, Player, GameLogEntry, AvailableGame, PlayerHand) live in `domain/src/model/types/shared-types.ts` to avoid duplication between client and server.
+
 ## What the Server Does
 
 The server wraps the Assignment 1 domain model and exposes it via GraphQL API:

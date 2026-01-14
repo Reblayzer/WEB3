@@ -483,6 +483,9 @@ client/src/
 │   ├── game.ts         # Game state, actions (playCard, drawCard, callUno)
 │   └── player.ts       # Player name state
 │
+├── types/              # Shared type definitions
+│   └── shared.ts       # OtherPlayerInfo (shared between store & worker)
+│
 ├── composables/        # Reusable composition functions
 │   ├── useBotWorkers.ts # Bot worker lifecycle management
 │   └── useGamePlay.ts  # Game play logic (handlers, computed, watchers)

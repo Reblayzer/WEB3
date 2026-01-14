@@ -623,11 +623,11 @@ client/
 │   │   ├── layout.tsx          # Server Component - metadata, HTML wrapper
 │   │   ├── page.tsx            # Client Component - main app logic
 │   │   └── globals.css         # Global styles
+│   ├── views/
+│   │   ├── LoginView.tsx       # Login form
+│   │   ├── LobbyView.tsx       # Room list/creation
+│   │   └── GameView.tsx        # Game UI
 │   ├── components/
-│   │   ├── views/
-│   │   │   ├── LoginView.tsx   # Login form
-│   │   │   ├── LobbyView.tsx   # Room list/creation
-│   │   │   └── GameView.tsx    # Game UI
 │   │   ├── UnoCard.tsx         # Card component
 │   │   └── ColorChooser.tsx    # Color picker
 │   ├── features/
@@ -680,7 +680,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 **Demonstrates: Client Component, Redux Provider, useEffect for WebSocket, SSR-safe defaults**
 
-**[page.tsx](Assignment6/client/src/app/page-refactored.tsx#L1-L45)**
+**[page.tsx](Assignment6/client/src/app/page.tsx#L1-L45)**
 
 ```tsx
 'use client'  // ← Required for Redux, hooks, WebSocket
@@ -747,7 +747,7 @@ function ClientPage() {
 
 **Demonstrates: Avoiding hydration errors with useEffect**
 
-**[page.tsx](Assignment6/client/src/app/page-refactored.tsx#L27-L32)**
+**[page.tsx](Assignment6/client/src/app/page.tsx#L27-L32)**
 
 ```tsx
 // ✅ CORRECT - SSR-safe defaults
@@ -770,7 +770,7 @@ const [conn, setConn] = useState<ConnectionHandle | null>(null)  // null is safe
 
 **Demonstrates: WebSocket connection only on client**
 
-**[page.tsx](Assignment6/client/src/app/page-refactored.tsx#L34-L41)**
+**[page.tsx](Assignment6/client/src/app/page.tsx#L34-L41)**
 
 ```tsx
 // Only runs AFTER hydration (client-side only)
@@ -994,11 +994,11 @@ export function connectServerStream(dispatch: AppDispatch): ConnectionHandle {
 | Concept | File | What It Shows |
 |---------|------|--------------|
 | **Server Component** | [layout.tsx](Assignment6/client/src/app/layout.tsx) | No 'use client', metadata export, SSR HTML |
-| **Client Component** | [page.tsx](Assignment6/client/src/app/page-refactored.tsx#L1) | 'use client' directive, hooks, Redux |
-| **SSR-Safe Defaults** | [page.tsx](Assignment6/client/src/app/page-refactored.tsx#L27-L32) | `playerName ?? ''`, `Boolean(...)` |
-| **useEffect for Client Code** | [page.tsx](Assignment6/client/src/app/page-refactored.tsx#L34-L41) | WebSocket connection after hydration |
+| **Client Component** | [page.tsx](Assignment6/client/src/app/page.tsx#L1) | 'use client' directive, hooks, Redux |
+| **SSR-Safe Defaults** | [page.tsx](Assignment6/client/src/app/page.tsx#L27-L32) | `playerName ?? ''`, `Boolean(...)` |
+| **useEffect for Client Code** | [page.tsx](Assignment6/client/src/app/page.tsx#L34-L41) | WebSocket connection after hydration |
 | **Redux Slice** | [unoSlice.ts](Assignment6/client/src/features/uno/unoSlice.ts) | State, reducers, actions |
-| **View Components** | [LoginView.tsx](Assignment6/client/src/components/views/LoginView.tsx) | Presentational, props-based |
+| **View Components** | [LoginView.tsx](Assignment6/client/src/views/LoginView.tsx) | Presentational, props-based |
 | **RxJS WebSocket** | [serverBridge.ts](Assignment6/client/src/rx/serverBridge.ts) | Observable stream, Redux dispatch |
 
 ---

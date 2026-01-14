@@ -5,9 +5,9 @@ import { Provider, useDispatch, useSelector } from 'react-redux'
 import type { Color, Card } from 'domain/src/model/deck'
 import { connectServerStream, type OutgoingMessage } from '../rx/serverBridge'
 import { setDisconnected, setRooms, setPlayerName } from '../features/uno/unoSlice'
-import LoginView from '../components/views/LoginView'
-import LobbyView from '../components/views/LobbyView'
-import GameView from '../components/views/GameView'
+import LoginView from '../views/LoginView'
+import LobbyView from '../views/LobbyView'
+import GameView from '../views/GameView'
 import { store, type RootState, type AppDispatch } from '../lib/store'
 
 type ConnectionHandle = { send: (msg: OutgoingMessage) => void; disconnect: () => void }
