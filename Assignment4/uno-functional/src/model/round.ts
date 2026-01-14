@@ -354,6 +354,11 @@ export const catchUnoFailure = ({ accuser, accused }: { accuser: number; accused
   })
 }
 
+export const hasCalledUno = (player: number, round: Round): boolean => {
+  // Check both pre-announce (before playing) and post-play window scenarios
+  return round.preUno[player] || (round.unoOpen && round.unoTarget === player ? round.unoSaid : false)
+}
+
 export const hasEnded = (round: Round) => round.ended
 export const winner = (round: Round) => round.winner
 
